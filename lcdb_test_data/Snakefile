@@ -1,0 +1,88 @@
+import os
+from textwrap import dedent
+
+shell.prefix('sleep 2;')
+
+rule all:
+    input: expand('samples/sample{n}/sample{n}.bam', n=range(1, 5))
+
+rule limits:
+    output: temp('LIMIT.bed')
+    shell:
+        'echo "2L	0	80000	2L" > {output}'
+
+rule prep_gtf:
+    input: rules.limits.output
+    output: 'raw/dm6.gtf'
+    shell:
+        'wget --no-clobber -q '
+        '-O- '
+        'ftp://ftp.flybase.net/genomes/Drosophila_melanogaster/dmel_r6.11_FB2016_03/gtf/dmel-all-r6.11.gtf.gz > tmp.gtf.gz '
+        '&& bedtools sort -i tmp.gtf.gz | grep exon > tmp.gtf '
+        '&& bedtools intersect -a tmp.gtf -b {input} > {output} '
+        '&& rm tmp.gtf tmp.gtf.gz'
+
+rule prep_fasta:
+    input: rules.limits.output
+    output: 'seq/2L.fa'
+    shell:
+        'wget --no-clobber -q '
+        '-O- ftp://ftp.flybase.net/genomes/Drosophila_melanogaster/dmel_r6.11_FB2016_03/fasta/dmel-all-chromosome-r6.11.fasta.gz '
+        '| gunzip -c > tmp.fa '
+        '&& bedtools getfasta -fi tmp.fa -bed {input} -fo {output} -name '
+        '&& rm tmp.fa tmp.fa.fai'
+
+rule flux:
+    input:
+        gtf=rules.prep_gtf.output,
+        fa=rules.prep_fasta.output
+    output:
+        fastq='samples/{sample}/{sample}.fastq',
+        lib=temporary('samples/{sample}/{sample}.lib'),
+        pro='samples/{sample}/{sample}.pro',
+        par='samples/{sample}/{sample}.par',
+        bed='samples/{sample}/{sample}.bed',
+    log: 'samples/{sample}/{sample}.log'
+    run:
+        outdir = os.path.dirname(output[0])
+        gen_dir = os.path.relpath(os.path.dirname(input.fa[0]), outdir)
+        gtf = os.path.relpath(input.gtf[0], outdir)
+        sample_int = wildcards.sample.replace('sample', '')
+        with open('samples/{0.sample}/{0.sample}.par'.format(wildcards), 'w') as fout:
+            fout.write(dedent(
+                """
+                REF_FILE_NAME	{gtf}
+                GEN_DIR	{gen_dir}
+                NB_MOLECULES	100000
+                READ_NUMBER	5000
+                ERR_FILE	76
+                FASTA	YES
+                SEED	{sample_int}
+                """.format(**locals())))
+        shell(
+            'flux-simulator --force -t simulator -x -l -s -p {fout.name} &> {log}')
+
+rule hisat_index:
+    input: rules.prep_fasta.output
+    output: expand('seq/2L.{n}.ht2', n=range(1,8))
+    params: index='seq/2L'
+    shell:
+        'hisat2-build {input} {params.index}'
+
+
+rule hisat_align:
+    input:
+        index=expand('seq/2L.{n}.ht2', n=range(1,8)),
+        fastq=rules.flux.output.fastq,
+    output: temporary('samples/{sample}/{sample}.sam')
+    params: index='seq/2L'
+    shell:
+        'hisat2 -x {params.index} -U {input.fastq} -S {output}'
+
+rule bam:
+    input: rules.hisat_align.output
+    output: 'samples/{sample}/{sample}.bam'
+    shell:
+        'samtools view -Sb {input} > {output}'
+
+# vim: ft=python

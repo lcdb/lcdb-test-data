@@ -1,0 +1,2 @@
+include Snakefile
+include environment.yml
