@@ -50,7 +50,7 @@ class Builder(object):
         use.
         """
         md5hash = hashlib.md5()
-        contents = pkg_resources.resource_string('lcdb_test', 'environment.yml')
+        contents = pkg_resources.resource_string('lcdb_test_data', 'environment.yml')
         md5hash.update(contents)
         with open(os.path.join(self.data_dir, 'environment.yml'), 'wb') as fout:
             fout.write(contents)
@@ -59,8 +59,8 @@ class Builder(object):
         if not os.path.exists(env_path):
             logger.info("Building environment in %s", env_path)
             os.makedirs(env_path)
-            cmds = ['conda', 'env', 'create', '--file', 'environment.yml', '--prefix', env_path]
-            p = sp.Popen(cmds, stdout=sp.PIPE, stderr=sp.STDOUT, bufsize=-1, cwd=self.data_dir)
+            cmd = ['conda', 'env', 'create', '--file', 'environment.yml', '--prefix', env_path]
+            p = sp.Popen(cmd, stdout=sp.PIPE, stderr=sp.STDOUT, bufsize=-1, cwd=self.data_dir)
             for i in p.stdout:
                 print(i[:-1].decode())
             retcode = p.wait()
@@ -77,7 +77,7 @@ class Builder(object):
         Write the Snakefile to the data dir
         """
         with open(os.path.join(self.data_dir, 'Snakefile'), 'wb') as fout:
-            fout.write(pkg_resources.resource_string('lcdb_test', 'Snakefile'))
+            fout.write(pkg_resources.resource_string('lcdb_test_data', 'Snakefile'))
         return fout.name
 
     def run_snakefile(self, additional_args=""):
