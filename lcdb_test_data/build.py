@@ -50,7 +50,7 @@ class Builder(object):
         use.
         """
         md5hash = hashlib.md5()
-        contents = pkg_resources.resource_string('lcdb_test', 'environment.yml')
+        contents = pkg_resources.resource_string('lcdb_test_data', 'environment.yml')
         md5hash.update(contents)
         with open(os.path.join(self.data_dir, 'environment.yml'), 'wb') as fout:
             fout.write(contents)
@@ -77,7 +77,7 @@ class Builder(object):
         Write the Snakefile to the data dir
         """
         with open(os.path.join(self.data_dir, 'Snakefile'), 'wb') as fout:
-            fout.write(pkg_resources.resource_string('lcdb_test', 'Snakefile'))
+            fout.write(pkg_resources.resource_string('lcdb_test_data', 'Snakefile'))
         return fout.name
 
     def run_snakefile(self, additional_args=""):
