@@ -59,8 +59,8 @@ class Builder(object):
         if not os.path.exists(env_path):
             logger.info("Building environment in %s", env_path)
             os.makedirs(env_path)
-            cmds = ['conda', 'env', 'create', '--file', 'environment.yml', '--prefix', env_path]
-            p = sp.Popen(cmds, stdout=sp.PIPE, stderr=sp.STDOUT, bufsize=-1, cwd=self.data_dir)
+            cmd = ['conda', 'env', 'create', '--file', 'environment.yml', '--prefix', env_path]
+            p = sp.Popen(cmd, stdout=sp.PIPE, stderr=sp.STDOUT, bufsize=-1, cwd=self.data_dir)
             for i in p.stdout:
                 print(i[:-1].decode())
             retcode = p.wait()
