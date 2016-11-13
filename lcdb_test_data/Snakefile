@@ -6,7 +6,12 @@ shell.prefix('sleep 2;')
 
 
 rule all:
-    input: expand('samples/sample{n}/sample{n}.bam', n=range(1, 5))
+    input:
+        expand(
+            'samples/sample{n}/sample{n}.{paired}.bam',
+            n=range(1, 5), paired=['paired', 'single']
+        )
+
 
 rule limits:
     output: temp('LIMIT.bed')
@@ -42,7 +47,8 @@ rule flux:
         gtf=rules.prep_gtf.output,
         fa=rules.prep_fasta.output
     output:
-        fastq='samples/{sample}/{sample}.fastq.gz',
+        fastq_R1='samples/{sample}/{sample}_R1.fastq.gz',
+        fastq_R2='samples/{sample}/{sample}_R2.fastq.gz',
         lib=temporary('samples/{sample}/{sample}.lib'),
         pro='samples/{sample}/{sample}.pro',
         par='samples/{sample}/{sample}.par',
@@ -62,12 +68,31 @@ rule flux:
                 READ_NUMBER	5000
                 ERR_FILE	76
                 FASTA	YES
+                PAIRED_END	true
+                UNIQUE_IDS	true
                 SEED	{sample_int}
                 """.format(**locals())))
         shell(
             'flux-simulator --force -t simulator -x -l -s -p {fout.name} &> {log}')
-        fastq = output.fastq.replace('.gz', '')
-        shell('gzip {fastq}')
+
+        # flux-simulator creates an interleaved fastq. So we deinterleave, idea
+        # from https://gist.github.com/nathanhaigh/3521724
+        #
+        # Note that if UNIQUE_IDS is false (by default), read names end with
+        # "S/2" or "A/1" and "S" or "A" indicate "sense" or "antisense". When
+        # UNIQUE_IDS is true (as we use here), they only have /1 or /2, and
+        # read 1 is always sense while read 2 is antisense.
+        #
+        # Read more by checking `flux-simulator --printParameters`.
+        #
+        fastq = 'samples/{sample}/{sample}.fastq'.format(sample=wildcards.sample)
+        shell(
+            'cat {fastq} '
+            '| paste - - - - - - - - '
+            '| tee '
+            '>(cut -f 1-4 | tr "\t" "\n" | gzip -c > {output.fastq_R1}) '
+            '| cut -f 5-8 | tr "\t" "\n" | gzip -c > {output.fastq_R2}'
+        )
 
 
 rule hisat_index:
@@ -82,22 +107,42 @@ rule hisat_index:
 rule hisat_align:
     input:
         index=expand('seq/2L.{n}.ht2', n=range(1,8)),
-        fastq=rules.flux.output.fastq,
-    output: temporary('samples/{sample}/{sample}.sam')
+        fastq_R1=rules.flux.output.fastq_R1,
+        fastq_R2=rules.flux.output.fastq_R2,
+    output:
+        paired=temporary('samples/{sample}/{sample}.paired.sam'),
+        single=temporary('samples/{sample}/{sample}.single.sam'),
     params: index='seq/2L'
-    shell:
-        'hisat2 -x {params.index} -U {input.fastq} -S {output}'
-
+    run:
+        shell(
+            'hisat2 '
+            '-x {params.index} '
+            '-1 {input.fastq_R1} '
+            '-2 {input.fastq_R2} '
+            '-S {output.paired}'
+        )
+        shell(
+            'hisat2 '
+            '-x {params.index} '
+            '-U {input.fastq_R1} '
+            '-S {output.single}'
+        )
 
 rule bam:
-    input: rules.hisat_align.output
-    output: 'samples/{sample}/{sample}.bam'
-    shell:
-        'samtools view -Sb {input} > {output}'
+    input:
+        paired=rules.hisat_align.output.paired,
+        single=rules.hisat_align.output.single
+    output:
+        paired='samples/{sample}/{sample}.paired.bam',
+        single='samples/{sample}/{sample}.single.bam'
+    run:
+        shell('samtools view -Sb {input.paired} > {output.paired}')
+        shell('samtools view -Sb {input.single} > {output.single}')
 
 
 onsuccess:
     shell(
+        'rm ../data.tar.gz && '
         'tar -czvf ../data.tar.gz '
         '--exclude .conda-env '
         '--exclude .snakemake '
@@ -110,4 +155,3 @@ onsuccess:
         '. ')
 
 # vim: ft=python
-
