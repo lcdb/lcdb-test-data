@@ -19,12 +19,12 @@ directory.
 Automatically creates a conda environment in that directory to run the
 snakefile.
 
+Extra arguments are sent to Snakemake (e.g., -npr or -j8).
 """
 
 def main():
     ap = argparse.ArgumentParser(usage=usage)
     ap.add_argument('data_dir', help='Location in which to build data set')
-    ap.add_argument('-s', '--snakemake-args', help='String of args to pass to snakemake', default="")
     args, extra = ap.parse_known_args()
 
     b = Builder(args.data_dir)
