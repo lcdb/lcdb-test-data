@@ -1,7 +1,9 @@
 import os
 from textwrap import dedent
 
+# required to avoid near-simultaneous timestamps that confuse snakemake
 shell.prefix('sleep 2;')
+
 
 rule all:
     input: expand('samples/sample{n}/sample{n}.bam', n=range(1, 5))
@@ -11,9 +13,10 @@ rule limits:
     shell:
         'echo "2L	0	80000	2L" > {output}'
 
+
 rule prep_gtf:
     input: rules.limits.output
-    output: 'raw/dm6.gtf'
+    output: 'annotation/dm6.gtf'
     shell:
         'wget --no-clobber -q '
         '-O- '
@@ -21,6 +24,7 @@ rule prep_gtf:
         '&& bedtools sort -i tmp.gtf.gz | grep exon > tmp.gtf '
         '&& bedtools intersect -a tmp.gtf -b {input} > {output} '
         '&& rm tmp.gtf tmp.gtf.gz'
+
 
 rule prep_fasta:
     input: rules.limits.output
@@ -32,12 +36,13 @@ rule prep_fasta:
         '&& bedtools getfasta -fi tmp.fa -bed {input} -fo {output} -name '
         '&& rm tmp.fa tmp.fa.fai'
 
+
 rule flux:
     input:
         gtf=rules.prep_gtf.output,
         fa=rules.prep_fasta.output
     output:
-        fastq='samples/{sample}/{sample}.fastq',
+        fastq='samples/{sample}/{sample}.fastq.gz',
         lib=temporary('samples/{sample}/{sample}.lib'),
         pro='samples/{sample}/{sample}.pro',
         par='samples/{sample}/{sample}.par',
@@ -61,13 +66,17 @@ rule flux:
                 """.format(**locals())))
         shell(
             'flux-simulator --force -t simulator -x -l -s -p {fout.name} &> {log}')
+        fastq = output.fastq.replace('.gz', '')
+        shell('gzip {fastq}')
+
 
 rule hisat_index:
     input: rules.prep_fasta.output
     output: expand('seq/2L.{n}.ht2', n=range(1,8))
     params: index='seq/2L'
+    log: 'seq/2L.ht2.log'
     shell:
-        'hisat2-build {input} {params.index}'
+        'hisat2-build {input} {params.index} &> {log}'
 
 
 rule hisat_align:

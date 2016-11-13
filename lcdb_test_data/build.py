@@ -32,6 +32,7 @@ def main():
     b.write_snakefile()
     b.run_snakefile(extra)
 
+
 class Builder(object):
     def __init__(self, data_dir):
         self.data_dir = data_dir
