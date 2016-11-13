@@ -56,11 +56,14 @@ class Builder(object):
         with open(os.path.join(self.data_dir, 'environment.yml'), 'wb') as fout:
             fout.write(contents)
 
-        env_path = os.path.join(self.data_dir, '.conda-env', md5hash.hexdigest() )
+        # The command will be run with cwd set to self.data_dir, but it will be
+        # useful to report the full path, so create both
+        env_path = os.path.join(self.data_dir, '.conda-env', md5hash.hexdigest()[:6])
+        rel_env = os.path.relpath(env_path, self.data_dir)
         if not os.path.exists(env_path):
-            logger.info("Building environment in %s", env_path)
+            logger.info("Building environment in %s", os.path.abspath(env_path))
             os.makedirs(env_path)
-            cmd = ['conda', 'env', 'create', '--file', 'environment.yml', '--prefix', env_path]
+            cmd = ['conda', 'env', 'create', '--file', 'environment.yml', '--prefix', rel_env]
             p = sp.Popen(cmd, stdout=sp.PIPE, stderr=sp.STDOUT, bufsize=-1, cwd=self.data_dir)
             for i in p.stdout:
                 print(i[:-1].decode())
@@ -70,7 +73,7 @@ class Builder(object):
                 raise sp.CalledProcessError(retcode, cmd)
             logger.info('Built environment %s', env_path)
         else:
-            logger.info('Using existing environment %s', env_path)
+            logger.info('Using existing environment %s', os.path.abspath(env_path))
         self.env_path = env_path
 
     def write_snakefile(self):
@@ -88,10 +91,12 @@ class Builder(object):
         `additional_args` is a string of args to pass verbatim to snakemake,
         e.g., "-j4 -T", or "-n".
         """
-        env_prefix = 'source activate {};'.format(self.env_path)
         logger.info('Running snakemake in %s', self.data_dir)
         additional_args = ' '.join(additional_args)
-        cmd = "source activate {}; snakemake {}".format(self.env_path, additional_args)
+        cmd = "source activate {}; snakemake {}".format(
+            os.path.relpath(
+                self.env_path, self.data_dir
+            ), additional_args)
 
         p = sp.Popen(
             cmd,
