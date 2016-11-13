@@ -157,7 +157,7 @@ rule bam:
 # Upon successfully running, create a new tarball with the data.
 onsuccess:
     shell(
-        'rm ../data.tar.gz && '
+        'rm -f ../data.tar.gz && '
         'tar -czvf ../data.tar.gz '
         '--exclude .conda-env '
         '--exclude .snakemake '
@@ -167,6 +167,7 @@ onsuccess:
         '--exclude *.log '
         '--exclude dm6_sorted.gtf '
         '--exclude 2L*.ht2 '
+        '--exclude *.fastq '
         '. ')
 
 # vim: ft=python
