@@ -13,12 +13,16 @@ rule all:
         )
 
 
+# ----------------------------------------------------------------------------
+# Create a BED file that will be used to subset GTF and FASTA files
 rule limits:
     output: temp('LIMIT.bed')
     shell:
         'echo "2L	0	80000	2L" > {output}'
 
 
+# ----------------------------------------------------------------------------
+# Download FlyBase GTF, so
 rule prep_gtf:
     input: rules.limits.output
     output: 'annotation/dm6.gtf'
@@ -95,6 +99,8 @@ rule flux:
         )
 
 
+# ----------------------------------------------------------------------------
+# HISAT2 index
 rule hisat_index:
     input: rules.prep_fasta.output
     output: expand('seq/2L.{n}.ht2', n=range(1,8))
@@ -104,6 +110,11 @@ rule hisat_index:
         'hisat2-build {input} {params.index} &> {log}'
 
 
+# ----------------------------------------------------------------------------
+# HISAT2 align.
+#
+# Note we're creating both SE and PE bams in serial rather than parallel
+# (simplifies the snakefile)
 rule hisat_align:
     input:
         index=expand('seq/2L.{n}.ht2', n=range(1,8)),
@@ -128,6 +139,8 @@ rule hisat_align:
             '-S {output.single}'
         )
 
+# ------------------------------------------------------------------------------
+# HISAT2 outputs SAM but most tools use BAM
 rule bam:
     input:
         paired=rules.hisat_align.output.paired,
@@ -140,6 +153,8 @@ rule bam:
         shell('samtools view -Sb {input.single} > {output.single}')
 
 
+# -----------------------------------------------------------------------------
+# Upon successfully running, create a new tarball with the data.
 onsuccess:
     shell(
         'rm ../data.tar.gz && '
