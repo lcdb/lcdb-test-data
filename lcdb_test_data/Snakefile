@@ -88,10 +88,26 @@ rule hisat_align:
     shell:
         'hisat2 -x {params.index} -U {input.fastq} -S {output}'
 
+
 rule bam:
     input: rules.hisat_align.output
     output: 'samples/{sample}/{sample}.bam'
     shell:
         'samtools view -Sb {input} > {output}'
 
+
+onsuccess:
+    shell(
+        'tar -czvf ../data.tar.gz '
+        '--exclude .conda-env '
+        '--exclude .snakemake '
+        '--exclude *.pro '
+        '--exclude *.bed '
+        '--exclude *.par '
+        '--exclude *.log '
+        '--exclude dm6_sorted.gtf '
+        '--exclude 2L*.ht2 '
+        '. ')
+
 # vim: ft=python
+
