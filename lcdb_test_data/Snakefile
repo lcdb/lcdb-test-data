@@ -1,19 +1,31 @@
 import os
 from textwrap import dedent
 
+# required to avoid near-simultaneous timestamps that confuse snakemake
 shell.prefix('sleep 2;')
 
-rule all:
-    input: expand('samples/sample{n}/sample{n}.bam', n=range(1, 5))
 
+rule all:
+    input:
+        expand(
+            'samples/sample{n}/sample{n}.{paired}.bam',
+            n=range(1, 5), paired=['paired', 'single']
+        )
+
+
+# ----------------------------------------------------------------------------
+# Create a BED file that will be used to subset GTF and FASTA files
 rule limits:
     output: temp('LIMIT.bed')
     shell:
         'echo "2L	0	80000	2L" > {output}'
 
+
+# ----------------------------------------------------------------------------
+# Download FlyBase GTF, so
 rule prep_gtf:
     input: rules.limits.output
-    output: 'raw/dm6.gtf'
+    output: 'annotation/dm6.gtf'
     shell:
         'wget --no-clobber -q '
         '-O- '
@@ -21,6 +33,7 @@ rule prep_gtf:
         '&& bedtools sort -i tmp.gtf.gz | grep exon > tmp.gtf '
         '&& bedtools intersect -a tmp.gtf -b {input} > {output} '
         '&& rm tmp.gtf tmp.gtf.gz'
+
 
 rule prep_fasta:
     input: rules.limits.output
@@ -32,12 +45,14 @@ rule prep_fasta:
         '&& bedtools getfasta -fi tmp.fa -bed {input} -fo {output} -name '
         '&& rm tmp.fa tmp.fa.fai'
 
+
 rule flux:
     input:
         gtf=rules.prep_gtf.output,
         fa=rules.prep_fasta.output
     output:
-        fastq='samples/{sample}/{sample}.fastq',
+        fastq_R1='samples/{sample}/{sample}_R1.fastq.gz',
+        fastq_R2='samples/{sample}/{sample}_R2.fastq.gz',
         lib=temporary('samples/{sample}/{sample}.lib'),
         pro='samples/{sample}/{sample}.pro',
         par='samples/{sample}/{sample}.par',
@@ -57,32 +72,102 @@ rule flux:
                 READ_NUMBER	5000
                 ERR_FILE	76
                 FASTA	YES
+                PAIRED_END	true
+                UNIQUE_IDS	true
                 SEED	{sample_int}
                 """.format(**locals())))
         shell(
             'flux-simulator --force -t simulator -x -l -s -p {fout.name} &> {log}')
 
+        # flux-simulator creates an interleaved fastq. So we deinterleave, idea
+        # from https://gist.github.com/nathanhaigh/3521724
+        #
+        # Note that if UNIQUE_IDS is false (by default), read names end with
+        # "S/2" or "A/1" and "S" or "A" indicate "sense" or "antisense". When
+        # UNIQUE_IDS is true (as we use here), they only have /1 or /2, and
+        # read 1 is always sense while read 2 is antisense.
+        #
+        # Read more by checking `flux-simulator --printParameters`.
+        #
+        fastq = 'samples/{sample}/{sample}.fastq'.format(sample=wildcards.sample)
+        shell(
+            'cat {fastq} '
+            '| paste - - - - - - - - '
+            '| tee '
+            '>(cut -f 1-4 | tr "\t" "\n" | gzip -c > {output.fastq_R1}) '
+            '| cut -f 5-8 | tr "\t" "\n" | gzip -c > {output.fastq_R2}'
+        )
+
+
+# ----------------------------------------------------------------------------
+# HISAT2 index
 rule hisat_index:
     input: rules.prep_fasta.output
     output: expand('seq/2L.{n}.ht2', n=range(1,8))
     params: index='seq/2L'
+    log: 'seq/2L.ht2.log'
     shell:
-        'hisat2-build {input} {params.index}'
+        'hisat2-build {input} {params.index} &> {log}'
 
 
+# ----------------------------------------------------------------------------
+# HISAT2 align.
+#
+# Note we're creating both SE and PE bams in serial rather than parallel
+# (simplifies the snakefile)
 rule hisat_align:
     input:
         index=expand('seq/2L.{n}.ht2', n=range(1,8)),
-        fastq=rules.flux.output.fastq,
-    output: temporary('samples/{sample}/{sample}.sam')
+        fastq_R1=rules.flux.output.fastq_R1,
+        fastq_R2=rules.flux.output.fastq_R2,
+    output:
+        paired=temporary('samples/{sample}/{sample}.paired.sam'),
+        single=temporary('samples/{sample}/{sample}.single.sam'),
     params: index='seq/2L'
-    shell:
-        'hisat2 -x {params.index} -U {input.fastq} -S {output}'
+    run:
+        shell(
+            'hisat2 '
+            '-x {params.index} '
+            '-1 {input.fastq_R1} '
+            '-2 {input.fastq_R2} '
+            '-S {output.paired}'
+        )
+        shell(
+            'hisat2 '
+            '-x {params.index} '
+            '-U {input.fastq_R1} '
+            '-S {output.single}'
+        )
 
+# ------------------------------------------------------------------------------
+# HISAT2 outputs SAM but most tools use BAM
 rule bam:
-    input: rules.hisat_align.output
-    output: 'samples/{sample}/{sample}.bam'
-    shell:
-        'samtools view -Sb {input} > {output}'
+    input:
+        paired=rules.hisat_align.output.paired,
+        single=rules.hisat_align.output.single
+    output:
+        paired='samples/{sample}/{sample}.paired.bam',
+        single='samples/{sample}/{sample}.single.bam'
+    run:
+        shell('samtools view -Sb {input.paired} > {output.paired}')
+        shell('samtools view -Sb {input.single} > {output.single}')
+
+
+# -----------------------------------------------------------------------------
+# Upon successfully running, create a new tarball with the data.
+onsuccess:
+    shell(
+        'rm -f ../data.tar.gz && '
+        'tar -czvf ../data.tar.gz '
+        '--exclude .conda-env '
+        '--exclude .snakemake '
+        '--exclude *.pro '
+        '--exclude *.bed '
+        '--exclude *.par '
+        '--exclude *.log '
+        '--exclude dm6_sorted.gtf '
+        '--exclude 2L*.ht2 '
+        '--exclude *.fastq '
+        '. ')
 
 # vim: ft=python
