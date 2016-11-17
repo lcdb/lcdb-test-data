@@ -51,20 +51,22 @@ class Builder(object):
         use.
         """
         md5hash = hashlib.md5()
-        contents = pkg_resources.resource_string('lcdb_test_data', 'environment.yml')
+        contents = pkg_resources.resource_string('lcdb_test_data', 'requirements.txt')
         md5hash.update(contents)
-        with open(os.path.join(self.data_dir, 'environment.yml'), 'wb') as fout:
+        with open(os.path.join(self.data_dir, 'requirements.txt'), 'wb') as fout:
             fout.write(contents)
 
         # The command will be run with cwd set to self.data_dir, but it will be
         # useful to report the full path, so create both
         env_path = os.path.join(self.data_dir, '.conda-env', md5hash.hexdigest()[:6])
         rel_env = os.path.relpath(env_path, self.data_dir)
-        if not os.path.exists(env_path):
+        if not os.path.exists(os.path.join(env_path, '.success')):
             logger.info("Building environment in %s", os.path.abspath(env_path))
             os.makedirs(env_path)
-            cmd = ['conda', 'env', 'create', '--file', 'environment.yml', '--prefix', rel_env]
-            p = sp.Popen(cmd, stdout=sp.PIPE, stderr=sp.STDOUT, bufsize=-1, cwd=self.data_dir)
+            cmd = ['conda', 'create', '-y', '--file', 'requirements.txt',
+                   '--prefix', rel_env]
+            p = sp.Popen(cmd, stdout=sp.PIPE, stderr=sp.STDOUT, bufsize=-1,
+                         cwd=self.data_dir)
             for i in p.stdout:
                 print(i[:-1].decode())
             retcode = p.wait()
@@ -72,6 +74,10 @@ class Builder(object):
                 logger.error("CMDS: %s", cmd)
                 raise sp.CalledProcessError(retcode, cmd)
             logger.info('Built environment %s', env_path)
+
+            with open(os.path.join(env_path, '.success'), 'w') as fout:
+                pass
+
         else:
             logger.info('Using existing environment %s', os.path.abspath(env_path))
         self.env_path = env_path

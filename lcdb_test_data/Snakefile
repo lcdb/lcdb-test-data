@@ -10,7 +10,7 @@ rule all:
         expand(
             'samples/sample{n}/sample{n}.{paired}.bam',
             n=range(1, 5), paired=['paired', 'single']
-        )
+        ) + ['annotation/dm6.refflat']
 
 
 # ----------------------------------------------------------------------------
@@ -33,6 +33,13 @@ rule prep_gtf:
         '&& bedtools sort -i tmp.gtf.gz | grep exon > tmp.gtf '
         '&& bedtools intersect -a tmp.gtf -b {input} > {output} '
         '&& rm tmp.gtf tmp.gtf.gz'
+
+
+rule gtftorefflat:
+    input: rules.prep_gtf.output
+    output: 'annotation/dm6.refflat'
+    shell:
+        'gtfToGenePred {input} {output}'
 
 
 rule prep_fasta:

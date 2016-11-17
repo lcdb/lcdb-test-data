@@ -1,2 +1,2 @@
 include Snakefile
-include environment.yml
+include requirements.txt
