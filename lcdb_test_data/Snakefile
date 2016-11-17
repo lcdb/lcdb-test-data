@@ -39,7 +39,9 @@ rule gtftorefflat:
     input: rules.prep_gtf.output
     output: 'annotation/dm6.refflat'
     shell:
-        'gtfToGenePred {input} {output}'
+        'gtfToGenePred {input} {output}.tmp '
+        '&& paste <(cut -f1 {output}.tmp) {output}.tmp > {output} '
+        '&& rm {output}.tmp'
 
 
 rule prep_fasta:
