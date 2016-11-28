@@ -10,7 +10,7 @@ rule all:
         expand(
             'samples/sample{n}/sample{n}.{paired}.bam',
             n=range(1, 5), paired=['paired', 'single']
-        ) + ['annotation/dm6.refflat']
+        ) + ['annotation/dm6.refflat', 'seq/transcriptome.fa']
 
 
 # ----------------------------------------------------------------------------
@@ -34,6 +34,27 @@ rule prep_gtf:
         '&& bedtools intersect -a tmp.gtf -b {input} > {output} '
         '&& rm tmp.gtf tmp.gtf.gz'
 
+rule prep_transcriptome:
+    input: rules.prep_gtf.output
+    output: 'seq/transcriptome.fa'
+    run:
+        from Bio import SeqIO
+        import gffutils
+
+        shell('wget --no-clobber -q '
+              '-O- '
+              'ftp://ftp.flybase.net/genomes/Drosophila_melanogaster/dmel_r6.11_FB2016_03/fasta/dmel-all-transcript-r6.11.fasta.gz '
+              '| gzip -d -c > tmp.fa ')
+        features = gffutils.iterators.DataIterator(str(input[0]))
+        keep = set([i.attributes['transcript_id'][0] for i in features])
+        parser = SeqIO.parse('tmp.fa', 'fasta')
+        recs = []
+        for rec in parser:
+            if rec.name in keep:
+                recs.append(rec)
+        with open(output[0], 'w') as fout:
+            SeqIO.write(recs, fout, 'fasta')
+        shell('rm tmp.fa')
 
 rule gtftorefflat:
     input: rules.prep_gtf.output
@@ -118,6 +139,15 @@ rule hisat_index:
     shell:
         'hisat2-build {input} {params.index} &> {log}'
 
+# ----------------------------------------------------------------------------
+# bowtie2 index
+rule bowtie2_index:
+    input: rules.prep_fasta.output
+    output: expand('seq/2L.{n}.bt2', n=range(1,3))
+    params: index='seq/2L'
+    log: 'seq/2L.ht2.log'
+    shell:
+        'bowtie2-build {input} {params.index} &> {log}'
 
 # ----------------------------------------------------------------------------
 # HISAT2 align.
