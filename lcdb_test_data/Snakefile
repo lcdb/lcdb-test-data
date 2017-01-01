@@ -1,4 +1,6 @@
 import os
+from Bio import SeqIO
+from Bio.Seq import Seq
 from textwrap import dedent
 
 # required to avoid near-simultaneous timestamps that confuse snakemake
@@ -11,6 +13,7 @@ rule all:
             'samples/sample{n}/sample{n}.{paired}.bam',
             n=range(1, 5), paired=['paired', 'single']
         ) + ['annotation/dm6.refflat', 'seq/transcriptome.fa']
+        + expand('samples/sample{n}/sample{n}_R{N}.fastq.gz', n=[1, 2], N=[1, 2])
 
 
 # ----------------------------------------------------------------------------
@@ -81,8 +84,8 @@ rule flux:
         gtf=rules.prep_gtf.output,
         fa=rules.prep_fasta.output
     output:
-        fastq_R1='samples/{sample}/{sample}_R1.fastq.gz',
-        fastq_R2='samples/{sample}/{sample}_R2.fastq.gz',
+        fastq_R1='samples/{sample}/{sample}_R1.flux.fastq.gz',
+        fastq_R2='samples/{sample}/{sample}_R2.flux.fastq.gz',
         lib=temporary('samples/{sample}/{sample}.lib'),
         pro='samples/{sample}/{sample}.pro',
         par='samples/{sample}/{sample}.par',
@@ -128,6 +131,33 @@ rule flux:
             '| cut -f 5-8 | tr "\t" "\n" | gzip -c > {output.fastq_R2}'
         )
 
+# flux-simulator mutates some bases according to its error model. The
+# mutated bases are converted to lowercase. Turns out hisat2 doesn't
+# print these sequences in its output bam, and as a result
+# MarkDuplicates complains about those reads.
+#
+# So here we ensure all bases are uppercase.
+rule fix_fastq:
+    input:
+        fastq_R1='samples/{sample}/{sample}_R1.flux.fastq.gz',
+        fastq_R2='samples/{sample}/{sample}_R2.flux.fastq.gz',
+    output:
+        fastq_R1='samples/{sample}/{sample}_R1.fastq.gz',
+        fastq_R2='samples/{sample}/{sample}_R2.fastq.gz',
+    run:
+        def uppercase_fastq(infile):
+            for rec in SeqIO.parse(gzip.open(infile), 'fastq'):
+                a = rec.letter_annotations
+                rec.letter_annotations = {}
+                rec.seq = Seq(str(rec.seq).upper())
+                rec.letter_annotations = a
+                yield rec
+
+        with gzip.open(output.fastq_R1, 'wt') as fout:
+            SeqIO.write(uppercase_fastq(input.fastq_R1), fout, 'fastq')
+
+        with gzip.open(output.fastq_R2, 'wt') as fout:
+            SeqIO.write(uppercase_fastq(input.fastq_R2), fout, 'fastq')
 
 # ----------------------------------------------------------------------------
 # HISAT2 index
