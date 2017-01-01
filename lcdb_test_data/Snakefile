@@ -1,3 +1,4 @@
+import gzip
 import os
 from Bio import SeqIO
 from Bio.Seq import Seq
@@ -146,7 +147,7 @@ rule fix_fastq:
         fastq_R2='samples/{sample}/{sample}_R2.fastq.gz',
     run:
         def uppercase_fastq(infile):
-            for rec in SeqIO.parse(gzip.open(infile), 'fastq'):
+            for rec in SeqIO.parse(gzip.open(infile, 'rt'), 'fastq'):
                 a = rec.letter_annotations
                 rec.letter_annotations = {}
                 rec.seq = Seq(str(rec.seq).upper())
@@ -221,22 +222,5 @@ rule bam:
         shell('samtools view -Sb {input.paired} > {output.paired}')
         shell('samtools view -Sb {input.single} > {output.single}')
 
-
-# -----------------------------------------------------------------------------
-# Upon successfully running, create a new tarball with the data.
-onsuccess:
-    shell(
-        'rm -f ../data.tar.gz && '
-        'tar -czvf ../data.tar.gz '
-        '--exclude .conda-env '
-        '--exclude .snakemake '
-        '--exclude *.pro '
-        '--exclude *.bed '
-        '--exclude *.par '
-        '--exclude *.log '
-        '--exclude dm6_sorted.gtf '
-        '--exclude 2L*.ht2 '
-        '--exclude *.fastq '
-        '. ')
 
 # vim: ft=python
