@@ -25,9 +25,10 @@ rule all:
 # ----------------------------------------------------------------------------
 # Create a BED file that will be used to subset GTF and FASTA files
 rule limits:
-    output: temp('LIMIT.bed')
+    output: 'LIMIT.bed'
     shell:
-        'echo "2L	0	80000	2L" > {output}'
+        'echo "2L	0	1000000	2L" > {output}; '
+        'echo "2R	0	1000000	2R" >> {output}'
 
 
 # ----------------------------------------------------------------------------
