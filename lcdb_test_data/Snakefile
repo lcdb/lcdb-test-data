@@ -167,4 +167,27 @@ rule bam:
         shell('samtools view -Sb {input.single} > {output.single}')
 
 
+rule bam2fastq_pe:
+    input:
+        rules.bam.output.paired
+    output:
+        r1='samples/{sample}/{sample}_R2.fastq',
+        r2='samples/{sample}/{sample}_R1.fastq'
+    params: N=20000
+    shell:
+        'samtools sort -n {input} -o {input}.sorted.bam; '
+        'samtools view -h -F 0x04 {input}.sorted.bam -o {input}.sam; '
+        'samtools view -f 0x04 {input}.sorted.bam | head -n {params.N} >> {input}.sam; '
+        'samtools view -Sb {input}.sam > {input}.subset.bam; '
+        'bedtools bamtofastq -i {input}.subset.bam -fq {output.r1} -fq2 {output.r2}; '
+        'rm {input}.subset.bam {input}.sam {input}.sorted.bam'
+
+rule gzipped_fastq:
+    input:
+        'samples/{sample}/{sample}{prefix}.fastq'
+    output:
+        'samples/{sample}/{sample}{prefix}.fastq.gz'
+    shell:
+        'gzip {input}'
+
 # vim: ft=python
