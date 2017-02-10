@@ -195,7 +195,7 @@ rule bam2fastq_pe:
     output:
         r1='samples/{sample}/{sample}_R2.fastq',
         r2='samples/{sample}/{sample}_R1.fastq'
-    params: N=20000
+    params: N='20000'
     shell:
         'samtools sort -n {input} -o {input}.sorted.bam; '
         'samtools view -h -F 0x04 {input}.sorted.bam -o {input}.sam; '
