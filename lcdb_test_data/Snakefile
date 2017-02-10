@@ -130,13 +130,14 @@ rule bowtie2_index:
 # (simplifies the snakefile)
 rule hisat_align:
     input:
-        index=expand('seq/2L.{n}.ht2', n=range(1,8)),
-        fastq_R1=rules.flux.output.fastq_R1,
-        fastq_R2=rules.flux.output.fastq_R2,
+        index=expand('seq/dm6.small.{n}.ht2', n=range(1,8)),
+        fastq_R1=rules.download_fastqs.output.fastq_R1,
+        fastq_R2=rules.download_fastqs.output.fastq_R2,
     output:
         paired=temporary('samples/{sample}/{sample}.paired.sam'),
         single=temporary('samples/{sample}/{sample}.single.sam'),
-    params: index='seq/2L'
+    params: index='seq/dm6.small'
+    threads: 8
     run:
         shell(
             'hisat2 '
