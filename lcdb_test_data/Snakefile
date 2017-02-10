@@ -86,85 +86,22 @@ rule prep_fasta:
         '&& rm tmp.fa tmp.fa.fai'
 
 
-rule flux:
-    input:
-        gtf=rules.prep_gtf.output,
-        fa=rules.prep_fasta.output
+rule download_fastqs:
     output:
-        fastq_R1='samples/{sample}/{sample}_R1.flux.fastq.gz',
-        fastq_R2='samples/{sample}/{sample}_R2.flux.fastq.gz',
-        lib=temporary('samples/{sample}/{sample}.lib'),
-        pro='samples/{sample}/{sample}.pro',
-        par='samples/{sample}/{sample}.par',
-        bed='samples/{sample}/{sample}.bed',
-    log: 'samples/{sample}/{sample}.log'
+        fastq_R1='samples/{sample}/{sample}.full_R1.fastq.gz',
+        fastq_R2='samples/{sample}/{sample}.full_R2.fastq.gz'
     run:
-        outdir = os.path.dirname(output[0])
-        gen_dir = os.path.relpath(os.path.dirname(input.fa[0]), outdir)
-        gtf = os.path.relpath(input.gtf[0], outdir)
-        sample_int = wildcards.sample.replace('sample', '')
-        with open('samples/{0.sample}/{0.sample}.par'.format(wildcards), 'w') as fout:
-            fout.write(dedent(
-                """
-                REF_FILE_NAME	{gtf}
-                GEN_DIR	{gen_dir}
-                NB_MOLECULES	100000
-                READ_NUMBER	5000
-                ERR_FILE	76
-                FASTA	YES
-                PAIRED_END	true
-                UNIQUE_IDS	true
-                SEED	{sample_int}
-                """.format(**locals())))
-        shell(
-            'flux-simulator --force -t simulator -x -l -s -p {fout.name} &> {log}')
+        accession = {
+            'sample1': 'SRR948304',
+            'sample2': 'SRR948305',
+            'sample3': 'SRR948306',
+            'sample4': 'SRR948307',
+        }[wildcards.sample]
+        shell('fastq-dump {accession} --split-files')
+        shell('gzip -c {accession}_1.fastq > {output.fastq_R1}')
+        shell('gzip -c {accession}_2.fastq > {output.fastq_R2}')
 
-        # flux-simulator creates an interleaved fastq. So we deinterleave, idea
-        # from https://gist.github.com/nathanhaigh/3521724
-        #
-        # Note that if UNIQUE_IDS is false (by default), read names end with
-        # "S/2" or "A/1" and "S" or "A" indicate "sense" or "antisense". When
-        # UNIQUE_IDS is true (as we use here), they only have /1 or /2, and
-        # read 1 is always sense while read 2 is antisense.
-        #
-        # Read more by checking `flux-simulator --printParameters`.
-        #
-        fastq = 'samples/{sample}/{sample}.fastq'.format(sample=wildcards.sample)
-        shell(
-            'cat {fastq} '
-            '| paste - - - - - - - - '
-            '| tee '
-            '>(cut -f 1-4 | tr "\t" "\n" | gzip -c > {output.fastq_R1}) '
-            '| cut -f 5-8 | tr "\t" "\n" | gzip -c > {output.fastq_R2}'
-        )
 
-# flux-simulator mutates some bases according to its error model. The
-# mutated bases are converted to lowercase. Turns out hisat2 doesn't
-# print these sequences in its output bam, and as a result
-# MarkDuplicates complains about those reads.
-#
-# So here we ensure all bases are uppercase.
-rule fix_fastq:
-    input:
-        fastq_R1='samples/{sample}/{sample}_R1.flux.fastq.gz',
-        fastq_R2='samples/{sample}/{sample}_R2.flux.fastq.gz',
-    output:
-        fastq_R1='samples/{sample}/{sample}_R1.fastq.gz',
-        fastq_R2='samples/{sample}/{sample}_R2.fastq.gz',
-    run:
-        def uppercase_fastq(infile):
-            for rec in SeqIO.parse(gzip.open(infile, 'rt'), 'fastq'):
-                a = rec.letter_annotations
-                rec.letter_annotations = {}
-                rec.seq = Seq(str(rec.seq).upper())
-                rec.letter_annotations = a
-                yield rec
-
-        with gzip.open(output.fastq_R1, 'wt') as fout:
-            SeqIO.write(uppercase_fastq(input.fastq_R1), fout, 'fastq')
-
-        with gzip.open(output.fastq_R2, 'wt') as fout:
-            SeqIO.write(uppercase_fastq(input.fastq_R2), fout, 'fastq')
 
 # ----------------------------------------------------------------------------
 # HISAT2 index
