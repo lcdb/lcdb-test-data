@@ -39,7 +39,7 @@ rule prep_gtf:
         'wget --no-clobber -q '
         '-O- '
         'ftp://ftp.flybase.net/genomes/Drosophila_melanogaster/dmel_r6.11_FB2016_03/gtf/dmel-all-r6.11.gtf.gz > tmp.gtf.gz '
-        '&& bedtools sort -i tmp.gtf.gz | grep exon > {output} '
+        '&& zcat tmp.gtf.gz | bedtools sort -i stdin | grep exon > {output} '
         '&& rm tmp.gtf.gz '
 
 
