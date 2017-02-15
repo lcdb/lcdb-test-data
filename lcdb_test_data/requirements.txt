@@ -5,3 +5,5 @@ samtools
 biopython
 gffutils
 sra-tools
+snakemake
+seqtk

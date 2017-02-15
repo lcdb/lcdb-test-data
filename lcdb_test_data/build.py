@@ -64,7 +64,7 @@ class Builder(object):
             logger.info("Building environment in %s", os.path.abspath(env_path))
             os.makedirs(env_path)
             cmd = ['conda', 'create', '-y', '--file', 'requirements.txt',
-                   '--prefix', rel_env]
+                   '--prefix', rel_env, 'python=3']
             p = sp.Popen(cmd, stdout=sp.PIPE, stderr=sp.STDOUT, bufsize=-1,
                          cwd=self.data_dir)
             for i in p.stdout:
