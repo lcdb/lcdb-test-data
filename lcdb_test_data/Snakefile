@@ -77,7 +77,7 @@ rule prep_small_transcriptome:
         import gffutils
         features = gffutils.iterators.DataIterator(str(input.gtf))
         keep = set([i.attributes['transcript_id'][0] for i in features])
-        parser = SeqIO.parse(input.fasta, 'fasta')
+        parser = SeqIO.parse(str(input.fasta), 'fasta')
         recs = []
         for rec in parser:
             if rec.name in keep:
