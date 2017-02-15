@@ -19,7 +19,7 @@ rule all:
             'LIMIT.bed',
         ]
         #+ expand('samples/sample{n}/sample{n}_R{N}.fastq.gz', n=n, N=[1, 2])
-        #+ expand('samples/sample{n}/sample{n}.small_R{N}.fastq.gz', n=n, N=[1,2])
+        + expand('samples/sample{n}/sample{n}.small_R{N}.fastq.gz', n=n, N=[1,2])
 
 
 # ----------------------------------------------------------------------------
@@ -188,21 +188,55 @@ rule bam:
         shell('samtools view -Sb {input.paired} > {output.paired}')
         shell('samtools view -Sb {input.single} > {output.single}')
 
-
-rule bam2fastq_pe:
+rule sortbam:
     input:
-        rules.bam.output.paired
+        paired=rules.bam.output.paired,
+        single=rules.bam.output.single,
     output:
-        r1='samples/{sample}/{sample}_R2.fastq',
-        r2='samples/{sample}/{sample}_R1.fastq'
-    params: N=20000
+        paired='samples/{sample}/{sample}.full.paired.sorted.bam',
+        single='samples/{sample}/{sample}.full.single.sorted.bam'
     shell:
-        'samtools sort -n {input} -o {input}.sorted.bam; '
-        'samtools view -h -F 0x04 {input}.sorted.bam -o {input}.sam; '
-        'samtools view -f 0x04 {input}.sorted.bam | head -n {params.N} >> {input}.sam; '
-        'samtools view -Sb {input}.sam > {input}.subset.bam; '
-        'bedtools bamtofastq -i {input}.subset.bam -fq {output.r1} -fq2 {output.r2}; '
-        'rm {input}.subset.bam {input}.sam {input}.sorted.bam'
+        'samtools sort -m 4G {input.paired} > {output.paired} '
+        '&& samtools sort {input.single} > {output.single} '
+
+
+# Previous iterations tried to subset the BAM by the limits and then convert to
+# FASTQ. But since mates can span the limit boundaries, this can result in
+# FASTQs with mismatched read counts.
+#
+# Still other iterations had tried to map to a restricted reference, but this
+# still took a while, and any changes that would need to be made (e.g. in
+# number of reads, or in the limits) would trigger a re-run from the beginning,
+# including building the reference.
+#
+# Using seqtk here ensures that we're working at the read name level which,
+# after all is what we care about for making a small FASTQ.
+#
+# Also note the parameters here for the maximum number of mapped and unmapped
+# reads to include in the final small FASTQ.
+rule small_fastq:
+    input:
+        bam=rules.sortbam.output.paired,
+        full_fastq_R1=rules.download_fastqs.output.fastq_R1,
+        full_fastq_R2=rules.download_fastqs.output.fastq_R2,
+        limits=rules.limits.output
+    output:
+        mapped_names='samples/{sample}/{sample}.small.names.mapped.lst',
+        unmapped_names='samples/{sample}/{sample}.small.names.unmapped.lst',
+        R1='samples/{sample}/{sample}.small_R1.fastq',
+        R2='samples/{sample}/{sample}.small_R2.fastq'
+    params:
+        mapped_n=3000000,
+        unmapped_n=1000
+    shell:
+        'samtools view -h -L {input.limits} {input.bam} '
+        '| samtools view -f 3 - | cut -f1 | uniq | head -n {params.mapped_n} > {output.mapped_names} '
+        '&& samtools view -f 4 {input.bam} | cut -f1 | uniq | head -n {params.unmapped_n} > {output.unmapped_names} '
+        '&& seqtk subseq {input.full_fastq_R1} {output.mapped_names} > {output.R1} '
+        '&& seqtk subseq {input.full_fastq_R1} {output.unmapped_names} >> {output.R1} '
+        '&& seqtk subseq {input.full_fastq_R2} {output.mapped_names} > {output.R2} '
+        '&& seqtk subseq {input.full_fastq_R2} {output.unmapped_names} >> {output.R2} '
+
 
 rule gzipped_fastq:
     input:
@@ -211,5 +245,7 @@ rule gzipped_fastq:
         'samples/{sample}/{sample}{prefix}.fastq.gz'
     shell:
         'gzip {input}'
+
+
 
 # vim: ft=python
