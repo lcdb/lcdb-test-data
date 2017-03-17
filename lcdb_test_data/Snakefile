@@ -11,15 +11,15 @@ n = range(1, 5)
 rule all:
     input:
         expand(
-            'samples/sample{n}/sample{n}.{prefix}.{paired}.bam',
+            'rnaseq_samples/sample{n}/sample{n}.{prefix}.{paired}.bam',
             n=n, paired=['paired', 'single'], prefix=['full']
         ) + [
             #'annotation/dm6.small.refflat',
             'seq/dm6.small.transcriptome.fa',
             'LIMIT.bed',
         ]
-        #+ expand('samples/sample{n}/sample{n}_R{N}.fastq.gz', n=n, N=[1, 2])
-        + expand('samples/sample{n}/sample{n}.small_R{N}.fastq.gz', n=n, N=[1,2])
+        #+ expand('rnaseq_samples/sample{n}/sample{n}_R{N}.fastq.gz', n=n, N=[1, 2])
+        + expand('rnaseq_samples/sample{n}/sample{n}.small_R{N}.fastq.gz', n=n, N=[1,2])
 
 
 # ----------------------------------------------------------------------------
@@ -117,10 +117,10 @@ rule prep_small_fasta:
         'bedtools getfasta -fi {input.fasta} -bed {input.limits} -fo {output} -name '
 
 
-rule download_fastqs:
+rule download_rnaseq_fastqs:
     output:
-        fastq_R1='samples/{sample}/{sample}.full_R1.fastq.gz',
-        fastq_R2='samples/{sample}/{sample}.full_R2.fastq.gz'
+        fastq_R1='rnaseq_samples/{sample}/{sample}.full_R1.fastq.gz',
+        fastq_R2='rnaseq_samples/{sample}/{sample}.full_R2.fastq.gz'
     run:
         accession = {
             'sample1': 'SRR948304',
@@ -131,6 +131,20 @@ rule download_fastqs:
         shell('fastq-dump {accession} --split-files')
         shell('gzip -c {accession}_1.fastq > {output.fastq_R1}')
         shell('gzip -c {accession}_2.fastq > {output.fastq_R2}')
+
+rule download_chipseq_fastqs:
+    output:
+        fastq_R1='chipseq_samples/{sample}/{sample}.full_R1.fastq.gz',
+        fastq_R2='chipseq_samples/{sample}/{sample}.full_R2.fastq.gz'
+    run:
+        accession = {
+            'input_1': 'SRR1013775',
+            'ip_1': 'SRR1013783',
+        }[wildcards.sample]
+        shell('fastq-dump {accession}')
+        shell('gzip -c {accession}.fastq > {output.fastq_R1}')
+
+
 
 
 
@@ -144,6 +158,15 @@ rule hisat_index:
     shell:
         'hisat2-build {input} {params.index} &> {log}'
 
+# ----------------------------------------------------------------------------
+# Bowtie2 index
+rule bowtie2_index:
+    input: rules.prep_fasta.output
+    output: expand('seq/dm6.full.{n}.bt2', n=range(1,8))
+    params: index='seq/dm6.full'
+    log: 'seq/dm6.small.bt2.log'
+    shell:
+        'bowtie2-build {input} {params.index} &> {log}'
 
 # ----------------------------------------------------------------------------
 # HISAT2 align.
@@ -153,11 +176,11 @@ rule hisat_index:
 rule hisat_align:
     input:
         index=expand('seq/dm6.full.{n}.ht2', n=range(1,8)),
-        fastq_R1=rules.download_fastqs.output.fastq_R1,
-        fastq_R2=rules.download_fastqs.output.fastq_R2,
+        fastq_R1=rules.download_rnaseq_fastqs.output.fastq_R1,
+        fastq_R2=rules.download_rnaseq_fastqs.output.fastq_R2,
     output:
-        paired=temporary('samples/{sample}/{sample}.full.paired.sam'),
-        single=temporary('samples/{sample}/{sample}.full.single.sam'),
+        paired=temporary('rnaseq_samples/{sample}/{sample}.full.paired.sam'),
+        single=temporary('rnaseq_samples/{sample}/{sample}.full.single.sam'),
     params: index='seq/dm6.full'
     threads: 8
     run:
@@ -177,27 +200,67 @@ rule hisat_align:
 
 # ------------------------------------------------------------------------------
 # HISAT2 outputs SAM but most tools use BAM
-rule bam:
+rule rnaseq_bam:
     input:
         paired=rules.hisat_align.output.paired,
         single=rules.hisat_align.output.single
     output:
-        paired='samples/{sample}/{sample}.full.paired.bam',
-        single='samples/{sample}/{sample}.full.single.bam'
+        paired='rnaseq_samples/{sample}/{sample}.full.paired.bam',
+        single='rnaseq_samples/{sample}/{sample}.full.single.bam'
     run:
         shell('samtools view -Sb {input.paired} > {output.paired}')
         shell('samtools view -Sb {input.single} > {output.single}')
 
-rule sortbam:
+rule rnaseq_sortbam:
     input:
-        paired=rules.bam.output.paired,
-        single=rules.bam.output.single,
+        paired=rules.rnaseq_bam.output.paired,
+        single=rules.rnaseq_bam.output.single,
     output:
-        paired='samples/{sample}/{sample}.full.paired.sorted.bam',
-        single='samples/{sample}/{sample}.full.single.sorted.bam'
+        paired='rnaseq_samples/{sample}/{sample}.full.paired.sorted.bam',
+        single='rnaseq_samples/{sample}/{sample}.full.single.sorted.bam'
     shell:
         'samtools sort -m 4G {input.paired} > {output.paired} '
         '&& samtools sort {input.single} > {output.single} '
+
+
+# ----------------------------------------------------------------------------
+# Bowtie2 align.
+#
+rule bowtie2_align:
+    input:
+        index=expand('seq/dm6.full.{n}.bt2', n=range(1,8)),
+        fastq_R1=rules.download_chipseq_fastqs.output.fastq_R1,
+    output:
+        single=temporary('chipseq_samples/{sample}/{sample}.full.single.sam'),
+    params: index='seq/dm6.full'
+    threads: 8
+    run:
+        shell(
+            'bowtie2 '
+            '-x {params.index} '
+            '-U {input.fastq_R1} '
+            '-S {output.single}'
+        )
+
+
+# ------------------------------------------------------------------------------
+# Bowtie2 outputs SAM but most tools use BAM
+rule chipseq_bam:
+    input:
+        single=rules.bowtie2_align.output.single
+    output:
+        single='chipseq_samples/{sample}/{sample}.full.single.bam'
+    run:
+        shell('samtools view -Sb {input.single} > {output.single}')
+
+rule chipseq_sortbam:
+    input:
+        single=rules.chipseq_bam.output.single,
+    output:
+        single='chipseq_samples/{sample}/{sample}.full.single.sorted.bam'
+    shell:
+        'samtools sort {input.single} > {output.single} '
+
 
 
 # Previous iterations tried to subset the BAM by the limits and then convert to
@@ -214,17 +277,17 @@ rule sortbam:
 #
 # Also note the parameters here for the maximum number of mapped and unmapped
 # reads to include in the final small FASTQ.
-rule small_fastq:
+rule rnaseq_small_fastq:
     input:
-        bam=rules.sortbam.output.paired,
-        full_fastq_R1=rules.download_fastqs.output.fastq_R1,
-        full_fastq_R2=rules.download_fastqs.output.fastq_R2,
+        bam=rules.rnaseq_sortbam.output.paired,
+        full_fastq_R1=rules.download_rnaseq_fastqs.output.fastq_R1,
+        full_fastq_R2=rules.download_rnaseq_fastqs.output.fastq_R2,
         limits=rules.limits.output
     output:
-        mapped_names='samples/{sample}/{sample}.small.names.mapped.lst',
-        unmapped_names='samples/{sample}/{sample}.small.names.unmapped.lst',
-        R1='samples/{sample}/{sample}.small_R1.fastq',
-        R2='samples/{sample}/{sample}.small_R2.fastq'
+        mapped_names='rnaseq_samples/{sample}/{sample}.small.names.mapped.lst',
+        unmapped_names='rnaseq_samples/{sample}/{sample}.small.names.unmapped.lst',
+        R1='rnaseq_samples/{sample}/{sample}.small_R1.fastq',
+        R2='rnaseq_samples/{sample}/{sample}.small_R2.fastq'
     params:
         mapped_n=3000000,
         unmapped_n=1000
@@ -238,14 +301,39 @@ rule small_fastq:
         '&& seqtk subseq {input.full_fastq_R2} {output.unmapped_names} >> {output.R2} '
 
 
+rule chipseq_small_fastq:
+    input:
+        bam=rules.chipseq_sortbam.output.single,
+        full_fastq_R1=rules.download_chipseq_fastqs.output.fastq_R1,
+        limits=rules.limits.output
+    output:
+        mapped_names='chipseq_samples/{sample}/{sample}.small.names.mapped.lst',
+        unmapped_names='chipseq_samples/{sample}/{sample}.small.names.unmapped.lst',
+        R1='chipseq_samples/{sample}/{sample}.small_R1.fastq',
+    params:
+        mapped_n=3000000,
+        unmapped_n=1000
+    shell:
+        'samtools view -h -L {input.limits} {input.bam} '
+        '| samtools view -f 3 - | cut -f1 | uniq | head -n {params.mapped_n} > {output.mapped_names} '
+        '&& samtools view -f 4 {input.bam} | cut -f1 | uniq | head -n {params.unmapped_n} > {output.unmapped_names} '
+        '&& seqtk subseq {input.full_fastq_R1} {output.mapped_names} > {output.R1} '
+        '&& seqtk subseq {input.full_fastq_R1} {output.unmapped_names} >> {output.R1} '
+
+
 rule gzipped_fastq:
     input:
-        'samples/{sample}/{sample}{prefix}.fastq'
+        '{assay}_samples/{sample}/{sample}{prefix}.fastq'
     output:
-        'samples/{sample}/{sample}{prefix}.fastq.gz'
+        '{assay}_samples/{sample}/{sample}{prefix}.fastq.gz'
     shell:
         'gzip {input}'
 
-
+rule gzipped_gtf:
+    input:
+        rules.prep_small_gtf.input.gtf
+    output: 'annotation/dm6.small.gtf.gz'
+    shell:
+        'gzip {input}'
 
 # vim: ft=python
