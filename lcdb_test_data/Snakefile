@@ -132,14 +132,17 @@ rule download_rnaseq_fastqs:
         shell('gzip -c {accession}_1.fastq > {output.fastq_R1}')
         shell('gzip -c {accession}_2.fastq > {output.fastq_R2}')
 
+
 rule download_chipseq_fastqs:
     output:
         fastq_R1='chipseq_samples/{sample}/{sample}.full_R1.fastq.gz',
         fastq_R2='chipseq_samples/{sample}/{sample}.full_R2.fastq.gz'
     run:
         accession = {
-            'input_1': 'SRR1013775',
-            'ip_1': 'SRR1013783',
+            'input_1': 'SRR504954',
+            'ip_1': 'SRR504946',
+            'ip_2': 'SRR504947',
+            'ip_2': 'SRR504948',
         }[wildcards.sample]
         shell('fastq-dump {accession}')
         shell('gzip -c {accession}.fastq > {output.fastq_R1}')
