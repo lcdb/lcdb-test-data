@@ -142,7 +142,7 @@ rule download_chipseq_fastqs:
             'input_1': 'SRR504954',
             'ip_1': 'SRR504946',
             'ip_2': 'SRR504947',
-            'ip_2': 'SRR504948',
+            'ip_3': 'SRR504948',
         }[wildcards.sample]
         shell('fastq-dump {accession}')
         shell('gzip -c {accession}.fastq > {output.fastq_R1}')
