@@ -7,6 +7,24 @@ from textwrap import dedent
 # required to avoid near-simultaneous timestamps that confuse snakemake
 shell.prefix('sleep 2;')
 
+rnaseq_accessions = {
+    'sample1': 'SRR948304',
+    'sample2': 'SRR948305',
+    'sample3': 'SRR948306',
+    'sample4': 'SRR948307',
+}
+
+chipseq_accessions = {
+    'input_1': 'SRR504954',
+    'ip_1': 'SRR504946',
+    'ip_2': 'SRR504947',
+    'ip_3': 'SRR504948',
+}
+
+mapped_n_config = dict(small=3000000, tiny=1000)
+unmapped_n_config = dict(small=1000, tiny=10)
+
+
 n = range(1, 5)
 rule all:
     input:
@@ -18,8 +36,10 @@ rule all:
             'seq/dm6.small.transcriptome.fa',
             'LIMIT.bed',
         ]
-        #+ expand('rnaseq_samples/sample{n}/sample{n}_R{N}.fastq.gz', n=n, N=[1, 2])
-        + expand('rnaseq_samples/sample{n}/sample{n}.small_R{N}.fastq.gz', n=n, N=[1,2])
+        + expand('rnaseq_samples/sample{n}/sample{n}.{size}_R{N}.fastq.gz', n=n, N=[1,2], size=['small', 'tiny'])
+        + expand('rnaseq_samples/sample{n}/sample{n}.{size}.{r}.sorted.bam', size=['small', 'tiny'], n=n, r=['single', 'paired'])
+        + expand('chipseq_samples/{sample}/{sample}.{size}_R1.fastq.gz', size=['small', 'tiny'], sample=chipseq_accessions.keys())
+        + expand('chipseq_samples/{sample}/{sample}.{size}.single.sorted.bam', size=['small', 'tiny'], sample=chipseq_accessions.keys())
 
 
 # ----------------------------------------------------------------------------
@@ -122,12 +142,7 @@ rule download_rnaseq_fastqs:
         fastq_R1='rnaseq_samples/{sample}/{sample}.full_R1.fastq.gz',
         fastq_R2='rnaseq_samples/{sample}/{sample}.full_R2.fastq.gz'
     run:
-        accession = {
-            'sample1': 'SRR948304',
-            'sample2': 'SRR948305',
-            'sample3': 'SRR948306',
-            'sample4': 'SRR948307',
-        }[wildcards.sample]
+        accession = rnaseq_accessions[wildcards.sample]
         shell('fastq-dump {accession} --split-files')
         shell('gzip -c {accession}_1.fastq > {output.fastq_R1}')
         shell('gzip -c {accession}_2.fastq > {output.fastq_R2}')
@@ -136,19 +151,10 @@ rule download_rnaseq_fastqs:
 rule download_chipseq_fastqs:
     output:
         fastq_R1='chipseq_samples/{sample}/{sample}.full_R1.fastq.gz',
-        fastq_R2='chipseq_samples/{sample}/{sample}.full_R2.fastq.gz'
     run:
-        accession = {
-            'input_1': 'SRR504954',
-            'ip_1': 'SRR504946',
-            'ip_2': 'SRR504947',
-            'ip_3': 'SRR504948',
-        }[wildcards.sample]
+        accession = chipseq_accessions[wildcards.sample]
         shell('fastq-dump {accession}')
         shell('gzip -c {accession}.fastq > {output.fastq_R1}')
-
-
-
 
 
 # ----------------------------------------------------------------------------
@@ -165,7 +171,7 @@ rule hisat_index:
 # Bowtie2 index
 rule bowtie2_index:
     input: rules.prep_fasta.output
-    output: expand('seq/dm6.full.{n}.bt2', n=range(1,8))
+    output: expand('seq/dm6.full.{n}.bt2', n=range(1,2))
     params: index='seq/dm6.full'
     log: 'seq/dm6.small.bt2.log'
     shell:
@@ -179,11 +185,11 @@ rule bowtie2_index:
 rule hisat_align:
     input:
         index=expand('seq/dm6.full.{n}.ht2', n=range(1,8)),
-        fastq_R1=rules.download_rnaseq_fastqs.output.fastq_R1,
-        fastq_R2=rules.download_rnaseq_fastqs.output.fastq_R2,
+        fastq_R1='rnaseq_samples/{sample}/{sample}.{size}_R1.fastq.gz',
+        fastq_R2='rnaseq_samples/{sample}/{sample}.{size}_R2.fastq.gz'
     output:
-        paired=temporary('rnaseq_samples/{sample}/{sample}.full.paired.sam'),
-        single=temporary('rnaseq_samples/{sample}/{sample}.full.single.sam'),
+        paired=temporary('rnaseq_samples/{sample}/{sample}.{size}.paired.sam'),
+        single=temporary('rnaseq_samples/{sample}/{sample}.{size}.single.sam'),
     params: index='seq/dm6.full'
     threads: 8
     run:
@@ -208,8 +214,8 @@ rule rnaseq_bam:
         paired=rules.hisat_align.output.paired,
         single=rules.hisat_align.output.single
     output:
-        paired='rnaseq_samples/{sample}/{sample}.full.paired.bam',
-        single='rnaseq_samples/{sample}/{sample}.full.single.bam'
+        paired='rnaseq_samples/{sample}/{sample}.{size}.paired.bam',
+        single='rnaseq_samples/{sample}/{sample}.{size}.single.bam'
     run:
         shell('samtools view -Sb {input.paired} > {output.paired}')
         shell('samtools view -Sb {input.single} > {output.single}')
@@ -219,8 +225,8 @@ rule rnaseq_sortbam:
         paired=rules.rnaseq_bam.output.paired,
         single=rules.rnaseq_bam.output.single,
     output:
-        paired='rnaseq_samples/{sample}/{sample}.full.paired.sorted.bam',
-        single='rnaseq_samples/{sample}/{sample}.full.single.sorted.bam'
+        paired='rnaseq_samples/{sample}/{sample}.{size}.paired.sorted.bam',
+        single='rnaseq_samples/{sample}/{sample}.{size}.single.sorted.bam'
     shell:
         'samtools sort -m 4G {input.paired} > {output.paired} '
         '&& samtools sort {input.single} > {output.single} '
@@ -231,10 +237,10 @@ rule rnaseq_sortbam:
 #
 rule bowtie2_align:
     input:
-        index=expand('seq/dm6.full.{n}.bt2', n=range(1,8)),
-        fastq_R1=rules.download_chipseq_fastqs.output.fastq_R1,
+        index=expand('seq/dm6.full.{n}.bt2', n=range(1,2)),
+        fastq_R1='chipseq_samples/{sample}/{sample}.{size}_R1.fastq.gz'
     output:
-        single=temporary('chipseq_samples/{sample}/{sample}.full.single.sam'),
+        single=temporary('chipseq_samples/{sample}/{sample}.{size}.single.sam'),
     params: index='seq/dm6.full'
     threads: 8
     run:
@@ -252,7 +258,7 @@ rule chipseq_bam:
     input:
         single=rules.bowtie2_align.output.single
     output:
-        single='chipseq_samples/{sample}/{sample}.full.single.bam'
+        single='chipseq_samples/{sample}/{sample}.{size}.single.bam'
     run:
         shell('samtools view -Sb {input.single} > {output.single}')
 
@@ -260,7 +266,7 @@ rule chipseq_sortbam:
     input:
         single=rules.chipseq_bam.output.single,
     output:
-        single='chipseq_samples/{sample}/{sample}.full.single.sorted.bam'
+        single='chipseq_samples/{sample}/{sample}.{size}.single.sorted.bam'
     shell:
         'samtools sort {input.single} > {output.single} '
 
@@ -280,55 +286,60 @@ rule chipseq_sortbam:
 #
 # Also note the parameters here for the maximum number of mapped and unmapped
 # reads to include in the final small FASTQ.
+
+
 rule rnaseq_small_fastq:
     input:
-        bam=rules.rnaseq_sortbam.output.paired,
+        bam='rnaseq_samples/{sample}/{sample}.full.paired.sorted.bam',
         full_fastq_R1=rules.download_rnaseq_fastqs.output.fastq_R1,
         full_fastq_R2=rules.download_rnaseq_fastqs.output.fastq_R2,
         limits=rules.limits.output
     output:
-        mapped_names='rnaseq_samples/{sample}/{sample}.small.names.mapped.lst',
-        unmapped_names='rnaseq_samples/{sample}/{sample}.small.names.unmapped.lst',
-        R1='rnaseq_samples/{sample}/{sample}.small_R1.fastq',
-        R2='rnaseq_samples/{sample}/{sample}.small_R2.fastq'
-    params:
-        mapped_n=3000000,
-        unmapped_n=1000
-    shell:
-        'samtools view -h -L {input.limits} {input.bam} '
-        '| samtools view -f 3 - | cut -f1 | uniq | head -n {params.mapped_n} > {output.mapped_names} '
-        '&& samtools view -f 4 {input.bam} | cut -f1 | uniq | head -n {params.unmapped_n} > {output.unmapped_names} '
-        '&& seqtk subseq {input.full_fastq_R1} {output.mapped_names} > {output.R1} '
-        '&& seqtk subseq {input.full_fastq_R1} {output.unmapped_names} >> {output.R1} '
-        '&& seqtk subseq {input.full_fastq_R2} {output.mapped_names} > {output.R2} '
-        '&& seqtk subseq {input.full_fastq_R2} {output.unmapped_names} >> {output.R2} '
-
+        mapped_names='rnaseq_samples/{sample}/{sample}.{size}.names.mapped.lst',
+        unmapped_names='rnaseq_samples/{sample}/{sample}.{size}.names.unmapped.lst',
+        R1='rnaseq_samples/{sample}/{sample}.{size}_R1.fastq',
+        R2='rnaseq_samples/{sample}/{sample}.{size}_R2.fastq'
+    run:
+        mapped_n = mapped_n_config[wildcards.size]
+        unmapped_n = unmapped_n_config[wildcards.size]
+        shell(
+            'samtools view -h -L {input.limits} {input.bam} '
+            '| samtools view -f 3 - | cut -f1 | uniq | head -n {mapped_n} > {output.mapped_names} '
+            '&& samtools view -f 4 {input.bam} | cut -f1 | uniq | head -n {unmapped_n} > {output.unmapped_names} '
+            '&& seqtk subseq {input.full_fastq_R1} {output.mapped_names} > {output.R1} '
+            '&& seqtk subseq {input.full_fastq_R1} {output.unmapped_names} >> {output.R1} '
+            '&& seqtk subseq {input.full_fastq_R2} {output.mapped_names} > {output.R2} '
+            '&& seqtk subseq {input.full_fastq_R2} {output.unmapped_names} >> {output.R2} '
+        )
 
 rule chipseq_small_fastq:
     input:
-        bam=rules.chipseq_sortbam.output.single,
+        bam='chipseq_samples/{sample}/{sample}.full.single.sorted.bam',
         full_fastq_R1=rules.download_chipseq_fastqs.output.fastq_R1,
         limits=rules.limits.output
     output:
-        mapped_names='chipseq_samples/{sample}/{sample}.small.names.mapped.lst',
-        unmapped_names='chipseq_samples/{sample}/{sample}.small.names.unmapped.lst',
-        R1='chipseq_samples/{sample}/{sample}.small_R1.fastq',
-    params:
-        mapped_n=3000000,
-        unmapped_n=1000
-    shell:
-        'samtools view -h -L {input.limits} {input.bam} '
-        '| samtools view -f 3 - | cut -f1 | uniq | head -n {params.mapped_n} > {output.mapped_names} '
-        '&& samtools view -f 4 {input.bam} | cut -f1 | uniq | head -n {params.unmapped_n} > {output.unmapped_names} '
-        '&& seqtk subseq {input.full_fastq_R1} {output.mapped_names} > {output.R1} '
-        '&& seqtk subseq {input.full_fastq_R1} {output.unmapped_names} >> {output.R1} '
+        mapped_names='chipseq_samples/{sample}/{sample}.{size}.names.mapped.lst',
+        unmapped_names='chipseq_samples/{sample}/{sample}.{size}.names.unmapped.lst',
+        R1='chipseq_samples/{sample}/{sample}.{size}_R1.fastq',
+    run:
+        mapped_n = mapped_n_config[wildcards.size]
+        unmapped_n = unmapped_n_config[wildcards.size]
+        shell(
+            'samtools view -h -L {input.limits} {input.bam} '
+            '| samtools view -F 4 - | cut -f1 | uniq | head -n {mapped_n} > {output.mapped_names} '
+            '&& samtools view -f 4 {input.bam} | cut -f1 | uniq | head -n {unmapped_n} > {output.unmapped_names} '
+            '&& seqtk subseq {input.full_fastq_R1} {output.mapped_names} > {output.R1} '
+            '&& seqtk subseq {input.full_fastq_R1} {output.unmapped_names} >> {output.R1} '
+        )
 
 
 rule gzipped_fastq:
     input:
-        '{assay}_samples/{sample}/{sample}{prefix}.fastq'
+        '{assay}_samples/{sample}/{sample}.{size}_R{N}.fastq'
+    wildcard_constraints:
+        size='small|tiny'
     output:
-        '{assay}_samples/{sample}/{sample}{prefix}.fastq.gz'
+        '{assay}_samples/{sample}/{sample}.{size}_R{N}.fastq.gz'
     shell:
         'gzip {input}'
 
