@@ -32,7 +32,8 @@ rule all:
             'rnaseq_samples/sample{n}/sample{n}.{prefix}.{paired}.bam',
             n=n, paired=['paired', 'single'], prefix=['full']
         ) + [
-            #'annotation/dm6.small.refflat',
+            'annotation/dm6.small.refflat',
+            'seq/dm6.small.fa',
             'seq/dm6.small.transcriptome.fa',
             'LIMIT.bed',
         ]
@@ -134,7 +135,8 @@ rule prep_small_fasta:
         limits=rules.limits.output
     output: 'seq/dm6.small.fa'
     shell:
-        'bedtools getfasta -fi {input.fasta} -bed {input.limits} -fo {output} -name '
+        'bedtools getfasta -fi {input.fasta} -bed {input.limits} | '
+        '''awk -F ":" '/^>/{{print $1; next}}{{print}}' > {output} '''
 
 
 rule download_rnaseq_fastqs:
