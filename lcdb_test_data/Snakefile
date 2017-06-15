@@ -15,10 +15,10 @@ rnaseq_accessions = {
 }
 
 chipseq_accessions = {
-    'input_1': 'SRR504954',
-    'ip_1': 'SRR504946',
-    'ip_2': 'SRR504947',
-    'ip_3': 'SRR504948',
+    'input_1': 'SRR504958',
+    'input_2': 'SRR504959',
+    'ip_1': 'SRR504955',
+    'ip_2': 'SRR504956',
 }
 
 mapped_n_config = dict(small=3000000, tiny=1000)
