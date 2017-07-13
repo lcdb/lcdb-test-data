@@ -5,7 +5,7 @@ from Bio.Seq import Seq
 from textwrap import dedent
 
 # required to avoid near-simultaneous timestamps that confuse snakemake
-shell.prefix('sleep 2;')
+shell.prefix('sleep 2; source activate lcdb-test-data; ')
 
 rnaseq_accessions = {
     'sample1': 'SRR948304',
