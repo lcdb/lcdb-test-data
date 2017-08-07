@@ -22,8 +22,10 @@ cat > .inc <<EOF
 + chipseq_samples/*/*tiny*fastq.gz
 + seq
 + seq/*small*fa
++ seq/*tiny*fa
 + annotation
 + annotation/*small*
++ annotation/*tiny*
 - *
 EOF
 
