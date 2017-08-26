@@ -47,6 +47,15 @@ rule all:
 
 
 # ----------------------------------------------------------------------------
+# Separate rule for fastqs since on biowulf we need to run either on the head
+# node or on helix
+rule all_fastqs:
+    input:
+        expand('chipseq_samples/{sample}/{sample}.full_R1.fastq.gz', sample=chipseq_accessions.keys()),
+        expand('rnaseq_samples/{sample}/{sample}.full_R1.fastq.gz', sample=rnaseq_accessions.keys()),
+
+
+# ----------------------------------------------------------------------------
 # Create a BED file that will be used to subset GTF and FASTA files
 rule limits:
     output: 'LIMIT.bed'
