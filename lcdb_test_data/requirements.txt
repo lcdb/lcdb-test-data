@@ -1,7 +1,0 @@
-bedtools
-ucsc-gtftogenepred
-flux-simulator
-hisat2
-samtools
-biopython
-gffutils
