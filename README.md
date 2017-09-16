@@ -80,7 +80,7 @@ sample4 | SRR948307     | Smn mutant, rep 2 |
 ChIP-seq data consists of three IP/input pairs from GSE38594.
 
 label  | SRA accession | description                 |
--------|---------------------------------------------|
+-------|---------------|-----------------------------|
 input1 | SRR504958     | wing disc input, rep1       |
 input2 | SRR504959     | wing disc input, rep2       |
 input3 | SRR504959     | embyro input, rep1          |
@@ -89,5 +89,3 @@ ip2    | SRR504956     | GAF ChIP in wing disc, rep2 |
 ip3    | SRR504946     | GAF ChIP in embyro, rep1    |
 ip4    | SRR504947     | GAF ChIP in embyro, rep2    |
 
-
-.
