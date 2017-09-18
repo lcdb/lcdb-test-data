@@ -3,6 +3,14 @@
 This repository stores small amounts of example data that can be used for
 testing along with the code to reproduce the data.
 
+## Downloading data
+See the `data` directory in this repo to download some already-prepared data from *Drosophila melanogaster*.
+Use the URL format `https://github.com/lcdb/lcdb-test-data/blob/master/$PATH?raw=true` to download.
+For example, to download the file `rnaseq_samples/sample1/sample1.tiny_R1.fastq.gz`, use the following URL:
+
+https://github.com/lcdb/lcdb-test-data/blob/master/data/rnaseq_samples/sample1/sample1.tiny_R1.fastq.gz?raw=true
+
+
 ## Building data sets
 
 The Snakefile assumes an environment called `lcdb-test-data`, created like this
