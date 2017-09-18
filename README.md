@@ -17,7 +17,7 @@ The Snakefile assumes an environment called `lcdb-test-data`, created like this
 (assuming bioconda channel is set up):
 
 ```bash
-conda create -n lcdb-test-data --file requirements.txt
+conda create -n lcdb-test-data --file requirements.txt python=3
 ```
 
 Run the Snakefile as normal. Note that this will be downloading and creating
