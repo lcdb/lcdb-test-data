@@ -203,12 +203,14 @@ rule hisat_align:
             '-x {params.index} '
             '-1 {input.fastq_R1} '
             '-2 {input.fastq_R2} '
+            '-p {threads} '
             '-S {output.paired}'
         )
         shell(
             'hisat2 '
             '-x {params.index} '
             '-U {input.fastq_R1} '
+            '-p {threads} '
             '-S {output.single}'
         )
 
@@ -253,6 +255,7 @@ rule bowtie2_align:
             'bowtie2 '
             '-x {params.index} '
             '-U {input.fastq_R1} '
+            '-p {threads} '
             '-S {output.single}'
         )
 
