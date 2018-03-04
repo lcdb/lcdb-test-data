@@ -24,8 +24,9 @@ chipseq_accessions = {
     'ip_4': 'SRR504948',
 }
 
-mapped_n_config = dict(small=2000000, tiny=100000)
+mapped_n_config = dict(small=2000000, tiny=10000)
 unmapped_n_config = dict(small=1000, tiny=100)
+multimapped_n_config = dict(small=5000, tiny=500)
 
 
 n = range(1, 5)
@@ -326,17 +327,22 @@ rule chipseq_small_fastq:
         full_fastq_R1=rules.download_chipseq_fastqs.output.fastq_R1,
         limits=rules.limits.output
     output:
-        mapped_names='chipseq_samples/{sample}/{sample}.{size}.names.mapped.lst',
+        uniquely_mapped_names='chipseq_samples/{sample}/{sample}.{size}.names.mapped.lst',
+        multi_mapped_names='chipseq_samples/{sample}/{sample}.{size}.names.multi.lst',
         unmapped_names='chipseq_samples/{sample}/{sample}.{size}.names.unmapped.lst',
         R1='chipseq_samples/{sample}/{sample}.{size}_R1.fastq',
     run:
         mapped_n = mapped_n_config[wildcards.size]
         unmapped_n = unmapped_n_config[wildcards.size]
+        multi_n = multimapped_n_config[wildcards.size]
         shell(
             'samtools view -h -L {input.limits} {input.bam} '
-            '| samtools view -F 4 - | cut -f1 | uniq | head -n {mapped_n} > {output.mapped_names} '
+            '| samtools view -F 4 -q 20 - | cut -f1 | uniq | head -n {mapped_n} > {output.uniquely_mapped_names} '
+            '&& samtools view -h -L {input.limits} {input.bam} '
+            '| samtools view -F 4 - | grep "XS:i" | cut -f1 | uniq | head -n {multi_n} > {output.multi_mapped_names} '
             '&& samtools view -f 4 {input.bam} | cut -f1 | uniq | head -n {unmapped_n} > {output.unmapped_names} '
-            '&& seqtk subseq {input.full_fastq_R1} {output.mapped_names} > {output.R1} '
+            '&& seqtk subseq {input.full_fastq_R1} {output.uniquely_mapped_names} > {output.R1} '
+            '&& seqtk subseq {input.full_fastq_R1} {output.multi_mapped_names} >> {output.R1} '
             '&& seqtk subseq {input.full_fastq_R1} {output.unmapped_names} >> {output.R1} '
         )
 
