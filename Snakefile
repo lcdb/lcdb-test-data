@@ -24,8 +24,8 @@ chipseq_accessions = {
     'ip_4': 'SRR504948',
 }
 
-mapped_n_config = dict(small=2000000, tiny=1000)
-unmapped_n_config = dict(small=1000, tiny=10)
+mapped_n_config = dict(small=2000000, tiny=100000)
+unmapped_n_config = dict(small=1000, tiny=100)
 
 
 n = range(1, 5)
