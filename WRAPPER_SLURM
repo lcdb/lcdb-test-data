@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name="lcdb-wf"
+#SBATCH --job-name="lcdb-test-data"
 #SBATCH --partition="norm"
 #SBATCH --time=24:00:00
 
@@ -7,7 +7,7 @@ SNAKEFILE=$1
 
 
 # Run snakemake
-(source activate lcdb-wf; \
+(source activate lcdb-test-data; \
     time snakemake \
     -p \
     -s $SNAKEFILE \
