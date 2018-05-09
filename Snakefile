@@ -56,8 +56,8 @@ rule all:
 rule limits:
     output: 'LIMIT.bed'
     shell:
-        'echo "2L	0	1000000	2L" > {output}; '
-        'echo "2R	0	1000000	2R" >> {output}'
+        'echo "chr2L	0	1000000	chr2L" > {output}; '
+        'echo "chr2R	0	1000000	chr2R" >> {output}'
 
 
 # ----------------------------------------------------------------------------
@@ -68,7 +68,10 @@ rule prep_gtf:
         'wget --no-clobber -q '
         '-O- '
         'ftp://ftp.flybase.net/genomes/Drosophila_melanogaster/dmel_r6.11_FB2016_03/gtf/dmel-all-r6.11.gtf.gz > tmp.gtf.gz '
-        '&& zcat tmp.gtf.gz | bedtools sort -i stdin | grep exon > {output} '
+        '&& zcat tmp.gtf.gz '
+        '| bedtools sort -i stdin '
+        '| grep exon '
+        """| awk '{{print "chr"$0}}'  > {output} """
         '&& rm tmp.gtf.gz '
 
 
@@ -133,7 +136,8 @@ rule prep_fasta:
     shell:
         'wget --no-clobber -q '
         '-O- ftp://ftp.flybase.net/genomes/Drosophila_melanogaster/dmel_r6.11_FB2016_03/fasta/dmel-all-chromosome-r6.11.fasta.gz '
-        '| gunzip -c > {output} '
+        '| gunzip -c '
+        '| sed "s/>/>chr/g" > {output} '
 
 # ----------------------------------------------------------------------------
 # Subset genome fasta
