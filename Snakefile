@@ -7,6 +7,10 @@ from textwrap import dedent
 # required to avoid near-simultaneous timestamps that confuse snakemake
 shell.prefix('sleep 2; source activate lcdb-test-data; ')
 
+# This is required for running sratoolkit on biowulf; if you don't need it then
+# set to empty string
+VDB_CONFIG_PRELUDE = 'export VDB_CONFIG=/usr/local/apps/ncbi/config/biowulf.kfg'
+
 rnaseq_accessions = {
     'sample1': 'SRR948304',
     'sample2': 'SRR948305',
@@ -149,7 +153,7 @@ rule download_rnaseq_fastqs:
         fastq_R2='rnaseq_samples/{sample}/{sample}.full_R2.fastq.gz'
     run:
         accession = rnaseq_accessions[wildcards.sample]
-        shell('fastq-dump {accession} --split-files')
+        shell('{VDB_CONFIG_PRELUDE}; fastq-dump {accession} --split-files')
         shell('gzip -c {accession}_1.fastq > {output.fastq_R1}')
         shell('gzip -c {accession}_2.fastq > {output.fastq_R2}')
 
@@ -159,9 +163,14 @@ rule download_chipseq_fastqs:
         fastq_R1='chipseq_samples/{sample}/{sample}.full_R1.fastq.gz',
     run:
         accession = chipseq_accessions[wildcards.sample]
-        shell('fastq-dump {accession}')
+        shell('{VDB_CONFIG_PRELUDE}; fastq-dump {accession}')
         shell('gzip -c {accession}.fastq > {output.fastq_R1}')
 
+
+rule download_all_fastqs:
+    input:
+        expand('chipseq_samples/{sample}/{sample}.full_R1.fastq.gz', sample=chipseq_accessions.keys()),
+        expand('rnaseq_samples/{sample}/{sample}.full_R{n}.fastq.gz', sample=rnaseq_accessions.keys(), n=[1,2]),
 
 # ----------------------------------------------------------------------------
 # HISAT2 index
