@@ -7,6 +7,10 @@ from textwrap import dedent
 # required to avoid near-simultaneous timestamps that confuse snakemake
 shell.prefix('sleep 2; source activate lcdb-test-data; ')
 
+# This is required for running sratoolkit on biowulf; if you don't need it then
+# set to empty string
+VDB_CONFIG_PRELUDE = 'export VDB_CONFIG=/usr/local/apps/ncbi/config/biowulf.kfg'
+
 rnaseq_accessions = {
     'sample1': 'SRR948304',
     'sample2': 'SRR948305',
@@ -24,8 +28,9 @@ chipseq_accessions = {
     'ip_4': 'SRR504948',
 }
 
-mapped_n_config = dict(small=2000000, tiny=1000)
-unmapped_n_config = dict(small=1000, tiny=10)
+mapped_n_config = dict(small=2000000, tiny=10000)
+unmapped_n_config = dict(small=1000, tiny=100)
+multimapped_n_config = dict(small=5000, tiny=500)
 
 
 n = range(1, 5)
@@ -51,8 +56,8 @@ rule all:
 rule limits:
     output: 'LIMIT.bed'
     shell:
-        'echo "2L	0	1000000	2L" > {output}; '
-        'echo "2R	0	1000000	2R" >> {output}'
+        'echo "chr2L	0	1000000	chr2L" > {output}; '
+        'echo "chr2R	0	1000000	chr2R" >> {output}'
 
 
 # ----------------------------------------------------------------------------
@@ -63,7 +68,10 @@ rule prep_gtf:
         'wget --no-clobber -q '
         '-O- '
         'ftp://ftp.flybase.net/genomes/Drosophila_melanogaster/dmel_r6.11_FB2016_03/gtf/dmel-all-r6.11.gtf.gz > tmp.gtf.gz '
-        '&& zcat tmp.gtf.gz | bedtools sort -i stdin | grep exon > {output} '
+        '&& zcat tmp.gtf.gz '
+        '| bedtools sort -i stdin '
+        '| grep exon '
+        """| awk '{{print "chr"$0}}'  > {output} """
         '&& rm tmp.gtf.gz '
 
 
@@ -128,7 +136,8 @@ rule prep_fasta:
     shell:
         'wget --no-clobber -q '
         '-O- ftp://ftp.flybase.net/genomes/Drosophila_melanogaster/dmel_r6.11_FB2016_03/fasta/dmel-all-chromosome-r6.11.fasta.gz '
-        '| gunzip -c > {output} '
+        '| gunzip -c '
+        '| sed "s/>/>chr/g" > {output} '
 
 # ----------------------------------------------------------------------------
 # Subset genome fasta
@@ -148,7 +157,7 @@ rule download_rnaseq_fastqs:
         fastq_R2='rnaseq_samples/{sample}/{sample}.full_R2.fastq.gz'
     run:
         accession = rnaseq_accessions[wildcards.sample]
-        shell('fastq-dump {accession} --split-files')
+        shell('{VDB_CONFIG_PRELUDE}; fastq-dump {accession} --split-files')
         shell('gzip -c {accession}_1.fastq > {output.fastq_R1}')
         shell('gzip -c {accession}_2.fastq > {output.fastq_R2}')
 
@@ -158,9 +167,14 @@ rule download_chipseq_fastqs:
         fastq_R1='chipseq_samples/{sample}/{sample}.full_R1.fastq.gz',
     run:
         accession = chipseq_accessions[wildcards.sample]
-        shell('fastq-dump {accession}')
+        shell('{VDB_CONFIG_PRELUDE}; fastq-dump {accession}')
         shell('gzip -c {accession}.fastq > {output.fastq_R1}')
 
+
+rule download_all_fastqs:
+    input:
+        expand('chipseq_samples/{sample}/{sample}.full_R1.fastq.gz', sample=chipseq_accessions.keys()),
+        expand('rnaseq_samples/{sample}/{sample}.full_R{n}.fastq.gz', sample=rnaseq_accessions.keys(), n=[1,2]),
 
 # ----------------------------------------------------------------------------
 # HISAT2 index
@@ -326,17 +340,22 @@ rule chipseq_small_fastq:
         full_fastq_R1=rules.download_chipseq_fastqs.output.fastq_R1,
         limits=rules.limits.output
     output:
-        mapped_names='chipseq_samples/{sample}/{sample}.{size}.names.mapped.lst',
+        uniquely_mapped_names='chipseq_samples/{sample}/{sample}.{size}.names.mapped.lst',
+        multi_mapped_names='chipseq_samples/{sample}/{sample}.{size}.names.multi.lst',
         unmapped_names='chipseq_samples/{sample}/{sample}.{size}.names.unmapped.lst',
         R1='chipseq_samples/{sample}/{sample}.{size}_R1.fastq',
     run:
         mapped_n = mapped_n_config[wildcards.size]
         unmapped_n = unmapped_n_config[wildcards.size]
+        multi_n = multimapped_n_config[wildcards.size]
         shell(
             'samtools view -h -L {input.limits} {input.bam} '
-            '| samtools view -F 4 - | cut -f1 | uniq | head -n {mapped_n} > {output.mapped_names} '
+            '| samtools view -F 4 -q 20 - | cut -f1 | uniq | head -n {mapped_n} > {output.uniquely_mapped_names} '
+            '&& samtools view -h -L {input.limits} {input.bam} '
+            '| samtools view -F 4 - | grep "XS:i" | cut -f1 | uniq | head -n {multi_n} > {output.multi_mapped_names} '
             '&& samtools view -f 4 {input.bam} | cut -f1 | uniq | head -n {unmapped_n} > {output.unmapped_names} '
-            '&& seqtk subseq {input.full_fastq_R1} {output.mapped_names} > {output.R1} '
+            '&& seqtk subseq {input.full_fastq_R1} {output.uniquely_mapped_names} > {output.R1} '
+            '&& seqtk subseq {input.full_fastq_R1} {output.multi_mapped_names} >> {output.R1} '
             '&& seqtk subseq {input.full_fastq_R1} {output.unmapped_names} >> {output.R1} '
         )
 
