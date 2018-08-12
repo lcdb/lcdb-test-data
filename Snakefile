@@ -326,8 +326,8 @@ rule rnaseq_small_fastq:
         unmapped_n = unmapped_n_config[wildcards.size]
         shell(
             'samtools view -h -L {input.limits} {input.bam} '
-            '| samtools view -f 3 - | cut -f1 | uniq | head -n {mapped_n} > {output.mapped_names} '
-            '&& samtools view -f 4 {input.bam} | cut -f1 | uniq | head -n {unmapped_n} > {output.unmapped_names} '
+            '| samtools view -f 3 - | cut -f1 | sort | uniq | head -n {mapped_n} > {output.mapped_names} '
+            '&& samtools view -f 4 {input.bam} | cut -f1 | sort | uniq | head -n {unmapped_n} > {output.unmapped_names} '
             '&& seqtk subseq {input.full_fastq_R1} {output.mapped_names} > {output.R1} '
             '&& seqtk subseq {input.full_fastq_R1} {output.unmapped_names} >> {output.R1} '
             '&& seqtk subseq {input.full_fastq_R2} {output.mapped_names} > {output.R2} '
@@ -350,10 +350,10 @@ rule chipseq_small_fastq:
         multi_n = multimapped_n_config[wildcards.size]
         shell(
             'samtools view -h -L {input.limits} {input.bam} '
-            '| samtools view -F 4 -q 20 - | cut -f1 | uniq | head -n {mapped_n} > {output.uniquely_mapped_names} '
+            '| samtools view -F 4 -q 20 - | cut -f1 | sort| uniq | head -n {mapped_n} > {output.uniquely_mapped_names} '
             '&& samtools view -h -L {input.limits} {input.bam} '
-            '| samtools view -F 4 - | grep "XS:i" | cut -f1 | uniq | head -n {multi_n} > {output.multi_mapped_names} '
-            '&& samtools view -f 4 {input.bam} | cut -f1 | uniq | head -n {unmapped_n} > {output.unmapped_names} '
+            '| samtools view -F 4 - | grep "XS:i" | cut -f1 | sort | uniq | head -n {multi_n} > {output.multi_mapped_names} '
+            '&& samtools view -f 4 {input.bam} | cut -f1 | sort | uniq | head -n {unmapped_n} > {output.unmapped_names} '
             '&& seqtk subseq {input.full_fastq_R1} {output.uniquely_mapped_names} > {output.R1} '
             '&& seqtk subseq {input.full_fastq_R1} {output.multi_mapped_names} >> {output.R1} '
             '&& seqtk subseq {input.full_fastq_R1} {output.unmapped_names} >> {output.R1} '

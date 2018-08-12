@@ -11,7 +11,6 @@ SNAKEFILE=$1
     time snakemake \
     -p \
     -s $SNAKEFILE \
-    -T \
     -k \
     --rerun-incomplete \
     --jobname "s.{rulename}.{jobid}.sh" \
