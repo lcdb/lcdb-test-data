@@ -235,8 +235,8 @@ rule rnaseq_bam:
         paired=rules.hisat_align.output.paired,
         single=rules.hisat_align.output.single
     output:
-        paired='rnaseq_samples/{sample}/{sample}.{size}.paired.bam',
-        single='rnaseq_samples/{sample}/{sample}.{size}.single.bam'
+        paired=temporary('rnaseq_samples/{sample}/{sample}.{size}.paired.bam'),
+        single=temporary('rnaseq_samples/{sample}/{sample}.{size}.single.bam')
     run:
         shell('samtools view -Sb {input.paired} > {output.paired}')
         shell('samtools view -Sb {input.single} > {output.single}')
@@ -280,7 +280,7 @@ rule chipseq_bam:
     input:
         single=rules.bowtie2_align.output.single
     output:
-        single='chipseq_samples/{sample}/{sample}.{size}.single.bam'
+        single=tempoarary('chipseq_samples/{sample}/{sample}.{size}.single.bam')
     run:
         shell('samtools view -Sb {input.single} > {output.single}')
 
@@ -324,15 +324,37 @@ rule rnaseq_small_fastq:
     run:
         mapped_n = mapped_n_config[wildcards.size]
         unmapped_n = unmapped_n_config[wildcards.size]
+
         shell(
             'samtools view -h -L {input.limits} {input.bam} '
-            '| samtools view -f 3 - | cut -f1 | sort | uniq | head -n {mapped_n} > {output.mapped_names} '
-            '&& samtools view -f 4 {input.bam} | cut -f1 | sort | uniq | head -n {unmapped_n} > {output.unmapped_names} '
-            '&& seqtk subseq {input.full_fastq_R1} {output.mapped_names} > {output.R1} '
-            '&& seqtk subseq {input.full_fastq_R1} {output.unmapped_names} >> {output.R1} '
-            '&& seqtk subseq {input.full_fastq_R2} {output.mapped_names} > {output.R2} '
-            '&& seqtk subseq {input.full_fastq_R2} {output.unmapped_names} >> {output.R2} '
+            ' | samtools view -f 3 - '
+            ' | cut -f1 '
+            ' | sort -u '
+            ' | head -n {mapped_n} > {output.mapped_names} '
         )
+
+        shell(
+            'samtools view -f 4 {input.bam} '
+            ' | cut -f1 '
+            ' | sort -u '
+            ' | head -n {unmapped_n} > {output.unmapped_names} '
+        )
+
+        shell(
+            'seqtk subseq {input.full_fastq_R1} {output.mapped_names} '
+            '> {output.R1}')
+
+        shell(
+            'seqtk subseq {input.full_fastq_R1} {output.unmapped_names} '
+            '>> {output.R1}')
+
+        shell(
+            'seqtk subseq {input.full_fastq_R2} {output.mapped_names} '
+            '> {output.R2}')
+
+        shell(
+            'seqtk subseq {input.full_fastq_R2} {output.unmapped_names} '
+            '>> {output.R2}')
 
 rule chipseq_small_fastq:
     input:
@@ -348,16 +370,56 @@ rule chipseq_small_fastq:
         mapped_n = mapped_n_config[wildcards.size]
         unmapped_n = unmapped_n_config[wildcards.size]
         multi_n = multimapped_n_config[wildcards.size]
+
+        # For "unique" and "multimapping" we need mutually exclusive sets of
+        # reads to avoid including reads twice, which will cause Picard tools
+        # to fail. So for unique, we require MAPQ > 20 and no XS:i tag, and for
+        # multimapping MAPQ < 20 plus an XS:i tag.
+        #
+        # Bowtie2 can report MAPQ > 20 but also include an XS:i tag, which
+        # effectively means "this read maps well enough to call uniquely mapped
+        # (MAPQ >20) but there's another read reported (with score XS:i). That
+        # other read has a worse MAPQ that's poor enough such that we do not
+        # consider this read a multimapper".
         shell(
             'samtools view -h -L {input.limits} {input.bam} '
-            '| samtools view -F 4 -q 20 - | cut -f1 | sort| uniq | head -n {mapped_n} > {output.uniquely_mapped_names} '
-            '&& samtools view -h -L {input.limits} {input.bam} '
-            '| samtools view -F 4 - | grep "XS:i" | cut -f1 | sort | uniq | head -n {multi_n} > {output.multi_mapped_names} '
-            '&& samtools view -f 4 {input.bam} | cut -f1 | sort | uniq | head -n {unmapped_n} > {output.unmapped_names} '
-            '&& seqtk subseq {input.full_fastq_R1} {output.uniquely_mapped_names} > {output.R1} '
-            '&& seqtk subseq {input.full_fastq_R1} {output.multi_mapped_names} >> {output.R1} '
-            '&& seqtk subseq {input.full_fastq_R1} {output.unmapped_names} >> {output.R1} '
+            ' | samtools view -F 4 - '
+            ''' | awk -F "\t" '{{if ($5 > 20) print $0}}' '''
+            ' | grep -v "XS:i" '
+            ' | cut -f1 '
+            ' | sort -u '
+            ' | head -n {mapped_n} > {output.uniquely_mapped_names} '
         )
+
+        shell(
+            'samtools view -h -L {input.limits} {input.bam} '
+            ' | samtools view -F 4 - '
+            ''' | awk -F "\t" '{{if ($5 < 20) print $0}}' '''
+            ' | grep "XS:i" '
+            ' | cut -f1 '
+            ' | sort -u '
+            ' | head -n {multi_n} > {output.multi_mapped_names} '
+        )
+
+        shell(
+            ' samtools view -f 4 {input.bam} '
+            ' | cut -f1 '
+            ' | sort '
+            ' | uniq '
+            ' | head -n {unmapped_n} > {output.unmapped_names} '
+        )
+
+        shell(
+            'seqtk subseq {input.full_fastq_R1} {output.uniquely_mapped_names} '
+            '> {output.R1} ')
+
+        shell(
+            'seqtk subseq {input.full_fastq_R1} {output.multi_mapped_names} '
+            '>> {output.R1} ')
+
+        shell(
+            'seqtk subseq {input.full_fastq_R1} {output.unmapped_names} '
+            '>> {output.R1} ')
 
 
 rule gzipped_fastq:
