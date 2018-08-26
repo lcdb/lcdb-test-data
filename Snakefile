@@ -280,7 +280,7 @@ rule chipseq_bam:
     input:
         single=rules.bowtie2_align.output.single
     output:
-        single=tempoarary('chipseq_samples/{sample}/{sample}.{size}.single.bam')
+        single=temporary('chipseq_samples/{sample}/{sample}.{size}.single.bam')
     run:
         shell('samtools view -Sb {input.single} > {output.single}')
 
