@@ -3,11 +3,15 @@
 #SBATCH --partition="norm"
 #SBATCH --time=24:00:00
 
-SNAKEFILE=$1
+# make logdir
+if [[ ! -e logs ]]; then mkdir -p logs; fi
 
+SNAKEFILE=Snakefile
+#echo $SNAKEFILE
 
 # Run snakemake
-(source activate lcdb-test-data; \
+#(source activate lcdb-test-data; \
+(
     time snakemake \
     -p \
     -s $SNAKEFILE \
@@ -17,7 +21,7 @@ SNAKEFILE=$1
     -j 999 \
     --cluster-config config/clusterconfig.yaml \
     --verbose \
-    --cluster 'sbatch {cluster.prefix} --cpus-per-task={threads} ' \
+    --cluster 'sbatch {cluster.prefix} --cpus-per-task={threads} --output=logs/{rule}.o.%j --error=logs/{rule}.e.%j' \
     --use-conda \
     --latency-wait=60 \
     ${@:2} \
