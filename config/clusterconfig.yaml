@@ -13,6 +13,9 @@ hisat_align:
 bowtie2_align:
   prefix: "--gres=lscratch:20 --time=4:00:00 --mem=32g"
 
+bowtie2_align_cutnrun:
+  prefix: "--gres=lscratch:20 --time=4:00:00 --mem=32g"
+
 markduplicates:
   prefix: "--gres=lscratch=20 --time=4:00:00 --mem=32g"
 
